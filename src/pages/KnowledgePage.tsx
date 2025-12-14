@@ -3,22 +3,21 @@ import { Icons } from '../components/Icons';
 import { useStore } from '../store';
 import { KnowledgeFile } from '../types';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = import.meta.env.PROD ? '/api' : 'http://localhost:3001/api';
 
 export const KnowledgePage: React.FC = () => {
-  const { globalFiles, addGlobalFile, removeGlobalFile, addNotification, setGlobalFiles } = useStore();
+  const { globalFiles, addGlobalFile, removeGlobalFile, addNotification } = useStore();
   const [activeTab, setActiveTab] = useState<'upload' | 'integrations'>('upload');
   const [manualName, setManualName] = useState('');
   const [manualContent, setManualContent] = useState('');
   const [previewFile, setPreviewFile] = useState<KnowledgeFile | null>(null);
   const [googleConnected, setGoogleConnected] = useState(false);
-  const [driveFiles, setDriveFiles] = useState<any[]>([]);
-  const [gmailMessages, setGmailMessages] = useState<any[]>([]);
+  const [driveFiles, setDriveFiles] = useState<Array<{id: string; name: string; mimeType: string}>>([]);
+  const [gmailMessages, setGmailMessages] = useState<Array<{id: string; subject: string; from: string}>>([]);
   const [loadingDrive, setLoadingDrive] = useState(false);
   const [loadingGmail, setLoadingGmail] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check OAuth status on load
   useEffect(() => {
     checkOAuthStatus();
   }, []);
@@ -32,7 +31,7 @@ export const KnowledgePage: React.FC = () => {
         loadDriveFiles();
         loadGmailMessages();
       }
-    } catch (err) {
+    } catch {
       console.log('Backend not connected');
     }
   };
@@ -43,7 +42,6 @@ export const KnowledgePage: React.FC = () => {
       const data = await res.json();
       if (data.url) {
         window.open(data.url, '_blank', 'width=500,height=600');
-        // Poll for connection
         const interval = setInterval(async () => {
           const status = await fetch(`${API_URL}/oauth/status`);
           const statusData = await status.json();
@@ -55,7 +53,7 @@ export const KnowledgePage: React.FC = () => {
             addNotification({
               id: Date.now().toString(),
               title: 'Google Conectado! 🎉',
-              message: 'Drive e Gmail prontos para importar',
+              message: 'Drive e Gmail prontos',
               type: 'success',
               read: false,
               timestamp: new Date()
@@ -64,11 +62,11 @@ export const KnowledgePage: React.FC = () => {
         }, 2000);
         setTimeout(() => clearInterval(interval), 60000);
       }
-    } catch (err) {
+    } catch {
       addNotification({
         id: Date.now().toString(),
-        title: 'Erro na conexão',
-        message: 'Inicie o servidor backend primeiro',
+        title: 'Erro',
+        message: 'Backend não disponível',
         type: 'error',
         read: false,
         timestamp: new Date()
@@ -81,9 +79,9 @@ export const KnowledgePage: React.FC = () => {
     try {
       const res = await fetch(`${API_URL}/drive/files`);
       const data = await res.json();
-      setDriveFiles(data);
-    } catch (err) {
-      console.error('Error loading drive:', err);
+      setDriveFiles(Array.isArray(data) ? data : []);
+    } catch {
+      setDriveFiles([]);
     }
     setLoadingDrive(false);
   };
@@ -93,9 +91,9 @@ export const KnowledgePage: React.FC = () => {
     try {
       const res = await fetch(`${API_URL}/gmail/messages`);
       const data = await res.json();
-      setGmailMessages(data);
-    } catch (err) {
-      console.error('Error loading gmail:', err);
+      setGmailMessages(Array.isArray(data) ? data : []);
+    } catch {
+      setGmailMessages([]);
     }
     setLoadingGmail(false);
   };
@@ -104,29 +102,27 @@ export const KnowledgePage: React.FC = () => {
     try {
       const res = await fetch(`${API_URL}/drive/import/${fileId}`, { method: 'POST' });
       const data = await res.json();
-      
       addGlobalFile({
         id: data.id,
         name: data.name,
         content: data.content,
         type: 'text',
-        source: 'google-drive',
+        source: 'upload',
         lastModified: new Date()
       });
-
       addNotification({
         id: Date.now().toString(),
-        title: 'Arquivo Importado! 📁',
-        message: `${fileName} do Google Drive`,
+        title: 'Importado! 📁',
+        message: fileName,
         type: 'success',
         read: false,
         timestamp: new Date()
       });
-    } catch (err) {
+    } catch {
       addNotification({
         id: Date.now().toString(),
-        title: 'Erro ao importar',
-        message: 'Falha ao importar arquivo do Drive',
+        title: 'Erro',
+        message: 'Falha ao importar',
         type: 'error',
         read: false,
         timestamp: new Date()
@@ -138,16 +134,14 @@ export const KnowledgePage: React.FC = () => {
     try {
       const res = await fetch(`${API_URL}/gmail/import/${messageId}`, { method: 'POST' });
       const data = await res.json();
-      
       addGlobalFile({
         id: data.id,
         name: data.name,
         content: data.content,
         type: 'text',
-        source: 'gmail',
+        source: 'upload',
         lastModified: new Date()
       });
-
       addNotification({
         id: Date.now().toString(),
         title: 'Email Importado! 📧',
@@ -156,11 +150,11 @@ export const KnowledgePage: React.FC = () => {
         read: false,
         timestamp: new Date()
       });
-    } catch (err) {
+    } catch {
       addNotification({
         id: Date.now().toString(),
-        title: 'Erro ao importar',
-        message: 'Falha ao importar email',
+        title: 'Erro',
+        message: 'Falha ao importar',
         type: 'error',
         read: false,
         timestamp: new Date()
@@ -170,7 +164,6 @@ export const KnowledgePage: React.FC = () => {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
-    
     Array.from(e.target.files).forEach(file => {
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -184,11 +177,10 @@ export const KnowledgePage: React.FC = () => {
           lastModified: new Date(),
         };
         addGlobalFile(newFile);
-        
         addNotification({
           id: Date.now().toString(),
           title: 'Arquivo Adicionado! 📚',
-          message: `${file.name} foi adicionado à base`,
+          message: file.name,
           type: 'success',
           read: false,
           timestamp: new Date()
@@ -196,13 +188,11 @@ export const KnowledgePage: React.FC = () => {
       };
       reader.readAsText(file);
     });
-    
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleAddManual = () => {
     if (!manualName || !manualContent) return;
-    
     const newFile: KnowledgeFile = {
       id: Date.now().toString(),
       name: manualName.endsWith('.txt') ? manualName : `${manualName}.txt`,
@@ -212,16 +202,14 @@ export const KnowledgePage: React.FC = () => {
       lastModified: new Date(),
     };
     addGlobalFile(newFile);
-    
     addNotification({
       id: Date.now().toString(),
       title: 'Texto Adicionado! 📝',
-      message: `${newFile.name} foi salvo`,
+      message: newFile.name,
       type: 'success',
       read: false,
       timestamp: new Date()
     });
-    
     setManualName('');
     setManualContent('');
   };
@@ -236,18 +224,14 @@ export const KnowledgePage: React.FC = () => {
   return (
     <div className="h-full bg-gray-950 overflow-y-auto">
       <div className="max-w-6xl mx-auto p-8">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
             <Icons.Drive size={28} className="text-orange-400" />
             Central de Conhecimento
           </h1>
-          <p className="text-gray-500 mt-2">
-            Conecte Google Drive, Gmail ou faça upload de arquivos para treinar os agentes
-          </p>
+          <p className="text-gray-500 mt-2">Conecte Google Drive, Gmail ou faça upload</p>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
             <div className="flex items-center gap-3">
@@ -288,30 +272,19 @@ export const KnowledgePage: React.FC = () => {
                 {googleConnected ? <Icons.Success size={20} className="text-green-400" /> : <Icons.Link size={20} className="text-gray-500" />}
               </div>
               <div>
-                <p className="text-sm font-bold text-white">{googleConnected ? 'Conectado' : 'Desconectado'}</p>
+                <p className="text-sm font-bold text-white">{googleConnected ? 'Conectado' : 'Offline'}</p>
                 <p className="text-xs text-gray-500">Google</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-2 mb-6 border-b border-gray-800">
-          <button
-            onClick={() => setActiveTab('upload')}
-            className={`px-4 py-3 font-medium transition-colors flex items-center gap-2 ${
-              activeTab === 'upload' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-500 hover:text-white'
-            }`}
-          >
+          <button onClick={() => setActiveTab('upload')} className={`px-4 py-3 font-medium flex items-center gap-2 ${activeTab === 'upload' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-500 hover:text-white'}`}>
             <Icons.Upload size={18} /> Upload Manual
           </button>
-          <button
-            onClick={() => setActiveTab('integrations')}
-            className={`px-4 py-3 font-medium transition-colors flex items-center gap-2 ${
-              activeTab === 'integrations' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-500 hover:text-white'
-            }`}
-          >
-            <Icons.Link size={18} /> Integrações Google
+          <button onClick={() => setActiveTab('integrations')} className={`px-4 py-3 font-medium flex items-center gap-2 ${activeTab === 'integrations' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-500 hover:text-white'}`}>
+            <Icons.Link size={18} /> Integrações
           </button>
         </div>
 
@@ -319,42 +292,20 @@ export const KnowledgePage: React.FC = () => {
           <div className="col-span-2 space-y-6">
             {activeTab === 'upload' && (
               <>
-                {/* Drag & Drop Area */}
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-gray-700 rounded-xl p-8 text-center cursor-pointer hover:border-orange-500 hover:bg-orange-500/5 transition-all"
-                >
+                <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-gray-700 rounded-xl p-8 text-center cursor-pointer hover:border-orange-500 hover:bg-orange-500/5">
                   <Icons.Upload size={48} className="mx-auto mb-4 text-orange-400" />
                   <p className="text-white font-medium mb-2">Clique ou arraste arquivos</p>
                   <p className="text-xs text-gray-500">PDF, CSV, JSON, TXT, MD</p>
                   <input ref={fileInputRef} type="file" accept=".txt,.md,.json,.csv,.pdf" multiple className="hidden" onChange={handleFileUpload} />
                 </div>
-
-                {/* Manual Text */}
                 <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
                   <h3 className="font-bold text-white mb-4 flex items-center gap-2">
                     <Icons.Edit size={18} className="text-orange-400" /> Adicionar Texto
                   </h3>
                   <div className="space-y-4">
-                    <input
-                      type="text"
-                      placeholder="Nome do documento"
-                      value={manualName}
-                      onChange={(e) => setManualName(e.target.value)}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none"
-                    />
-                    <textarea
-                      placeholder="Cole o conteúdo aqui..."
-                      value={manualContent}
-                      onChange={(e) => setManualContent(e.target.value)}
-                      rows={5}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none resize-none"
-                    />
-                    <button
-                      onClick={handleAddManual}
-                      disabled={!manualName || !manualContent}
-                      className="w-full py-3 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-500 disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
+                    <input type="text" placeholder="Nome do documento" value={manualName} onChange={(e) => setManualName(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none" />
+                    <textarea placeholder="Cole o conteúdo aqui..." value={manualContent} onChange={(e) => setManualContent(e.target.value)} rows={5} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none resize-none" />
+                    <button onClick={handleAddManual} disabled={!manualName || !manualContent} className="w-full py-3 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-500 disabled:opacity-50 flex items-center justify-center gap-2">
                       <Icons.Plus size={18} /> Adicionar
                     </button>
                   </div>
@@ -364,7 +315,6 @@ export const KnowledgePage: React.FC = () => {
 
             {activeTab === 'integrations' && (
               <div className="space-y-6">
-                {/* Connect Button */}
                 {!googleConnected && (
                   <div className="bg-gradient-to-r from-blue-900/20 to-red-900/20 rounded-xl border border-blue-500/30 p-6 text-center">
                     <div className="w-16 h-16 mx-auto mb-4 bg-white rounded-full flex items-center justify-center">
@@ -376,22 +326,15 @@ export const KnowledgePage: React.FC = () => {
                       </svg>
                     </div>
                     <h3 className="text-xl font-bold text-white mb-2">Conectar Google</h3>
-                    <p className="text-sm text-gray-400 mb-4">Acesse Drive, Gmail e Sheets</p>
-                    <button
-                      onClick={connectGoogle}
-                      className="px-6 py-3 bg-white text-gray-900 rounded-lg font-bold hover:bg-gray-100 flex items-center gap-2 mx-auto"
-                    >
-                      <Icons.Link size={18} /> Conectar com Google
+                    <p className="text-sm text-gray-400 mb-4">Acesse Drive e Gmail</p>
+                    <button onClick={connectGoogle} className="px-6 py-3 bg-white text-gray-900 rounded-lg font-bold hover:bg-gray-100 flex items-center gap-2 mx-auto">
+                      <Icons.Link size={18} /> Conectar
                     </button>
-                    <p className="text-xs text-gray-600 mt-4">
-                      ⚠️ Certifique-se que o backend está rodando (npm run dev no /server)
-                    </p>
                   </div>
                 )}
 
                 {googleConnected && (
                   <>
-                    {/* Google Drive */}
                     <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="font-bold text-white flex items-center gap-2">
@@ -401,21 +344,17 @@ export const KnowledgePage: React.FC = () => {
                           {loadingDrive ? 'Carregando...' : 'Atualizar'}
                         </button>
                       </div>
-                      
                       {driveFiles.length === 0 ? (
-                        <p className="text-gray-500 text-sm text-center py-4">Nenhum documento encontrado</p>
+                        <p className="text-gray-500 text-sm text-center py-4">Nenhum documento</p>
                       ) : (
                         <div className="space-y-2 max-h-64 overflow-y-auto">
-                          {driveFiles.map((file: any) => (
+                          {driveFiles.map((file) => (
                             <div key={file.id} className="flex items-center justify-between bg-gray-800/50 p-3 rounded-lg">
                               <div className="flex items-center gap-3">
                                 <Icons.FileText size={16} className="text-yellow-400" />
                                 <span className="text-sm text-white truncate max-w-xs">{file.name}</span>
                               </div>
-                              <button
-                                onClick={() => importDriveFile(file.id, file.name)}
-                                className="text-xs bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-lg hover:bg-yellow-500/30"
-                              >
+                              <button onClick={() => importDriveFile(file.id, file.name)} className="text-xs bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-lg hover:bg-yellow-500/30">
                                 Importar
                               </button>
                             </div>
@@ -424,7 +363,6 @@ export const KnowledgePage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Gmail */}
                     <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="font-bold text-white flex items-center gap-2">
@@ -434,21 +372,17 @@ export const KnowledgePage: React.FC = () => {
                           {loadingGmail ? 'Carregando...' : 'Atualizar'}
                         </button>
                       </div>
-                      
                       {gmailMessages.length === 0 ? (
-                        <p className="text-gray-500 text-sm text-center py-4">Nenhum email encontrado</p>
+                        <p className="text-gray-500 text-sm text-center py-4">Nenhum email</p>
                       ) : (
                         <div className="space-y-2 max-h-64 overflow-y-auto">
-                          {gmailMessages.map((msg: any) => (
+                          {gmailMessages.map((msg) => (
                             <div key={msg.id} className="flex items-center justify-between bg-gray-800/50 p-3 rounded-lg">
                               <div className="flex-1 min-w-0 mr-3">
                                 <p className="text-sm text-white truncate">{msg.subject}</p>
                                 <p className="text-xs text-gray-500 truncate">{msg.from}</p>
                               </div>
-                              <button
-                                onClick={() => importGmailMessage(msg.id, msg.subject)}
-                                className="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-lg hover:bg-red-500/30 flex-shrink-0"
-                              >
+                              <button onClick={() => importGmailMessage(msg.id, msg.subject)} className="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-lg hover:bg-red-500/30 flex-shrink-0">
                                 Importar
                               </button>
                             </div>
@@ -462,12 +396,10 @@ export const KnowledgePage: React.FC = () => {
             )}
           </div>
 
-          {/* Files List */}
           <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 h-fit">
             <h3 className="font-bold text-white mb-4 flex items-center gap-2">
               <Icons.File size={18} className="text-blue-400" /> Base ({globalFiles.length})
             </h3>
-            
             {globalFiles.length === 0 ? (
               <div className="text-center py-8 text-gray-600">
                 <Icons.File size={32} className="mx-auto mb-2 opacity-30" />
@@ -476,45 +408,23 @@ export const KnowledgePage: React.FC = () => {
             ) : (
               <div className="space-y-2 max-h-[500px] overflow-y-auto">
                 {globalFiles.map(file => (
-                  <div
-                    key={file.id}
-                    className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                      previewFile?.id === file.id ? 'bg-orange-500/20 border border-orange-500/30' : 'bg-gray-800/50 hover:bg-gray-800'
-                    }`}
-                    onClick={() => setPreviewFile(file)}
-                  >
+                  <div key={file.id} className={`flex items-center justify-between p-3 rounded-lg cursor-pointer ${previewFile?.id === file.id ? 'bg-orange-500/20 border border-orange-500/30' : 'bg-gray-800/50 hover:bg-gray-800'}`} onClick={() => setPreviewFile(file)}>
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className={`w-6 h-6 rounded flex items-center justify-center ${
-                        file.source === 'google-drive' ? 'bg-yellow-500/20' :
-                        file.source === 'gmail' ? 'bg-red-500/20' : 'bg-blue-500/20'
-                      }`}>
-                        {file.source === 'google-drive' ? <Icons.Drive size={12} className="text-yellow-400" /> :
-                         file.source === 'gmail' ? <Icons.Mail size={12} className="text-red-400" /> :
-                         <Icons.File size={12} className="text-blue-400" />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm text-white truncate">{file.name}</p>
-                        <p className="text-[10px] text-gray-500">{file.source}</p>
-                      </div>
+                      <Icons.File size={16} className="text-blue-400 flex-shrink-0" />
+                      <p className="text-sm text-white truncate">{file.name}</p>
                     </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDelete(file); }}
-                      className="text-gray-500 hover:text-red-400 p-1"
-                    >
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(file); }} className="text-gray-500 hover:text-red-400 p-1">
                       <Icons.Delete size={14} />
                     </button>
                   </div>
                 ))}
               </div>
             )}
-
             {previewFile && (
               <div className="mt-4 pt-4 border-t border-gray-800">
                 <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">{previewFile.name}</h4>
                 <div className="bg-gray-800 rounded-lg p-3 max-h-48 overflow-y-auto">
-                  <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
-                    {previewFile.content.substring(0, 1000)}{previewFile.content.length > 1000 ? '...' : ''}
-                  </pre>
+                  <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">{previewFile.content.substring(0, 1000)}</pre>
                 </div>
               </div>
             )}
