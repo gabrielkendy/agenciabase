@@ -58,6 +58,7 @@ import {
   ThumbsDown,
   Eye,
   EyeOff,
+  Database,
   Lock,
   Unlock,
   Key,
@@ -75,6 +76,9 @@ import {
   Layers,
   Filter,
   SlidersHorizontal,
+  Share2,
+  Rocket,
+  XCircle,
 } from 'lucide-react';
 
 export const Icons = {
@@ -185,4 +189,13 @@ export const Icons = {
   Layers,
   Filter,
   Sliders: SlidersHorizontal,
+  Share: Share2,
+  Share2,
+  Rocket,
+  Publish: Rocket,
+  XCircle,
+  Error: XCircle,
+  RefreshCw,
+  Database,
+  Knowledge: Database,
 };

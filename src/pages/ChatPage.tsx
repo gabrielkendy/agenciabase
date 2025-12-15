@@ -117,9 +117,14 @@ export const ChatPage = () => {
         scheduled_date: demand.scheduled_date,
         internal_approvers: [],
         external_approvers: [],
+        skip_internal_approval: false,
+        skip_external_approval: false,
         approval_status: 'pending',
+        approval_link_sent: false,
         auto_schedule: false,
         created_by_ai: true,
+        is_draft: false,
+        comments: [],
       });
     });
     addNotification({

@@ -1,11 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Client, Agent, Demand, Notification, APIConfig, DemandStatus, Conversation, ChatMessage } from '../types';
+import { Client, Agent, Demand, Notification, APIConfig, DemandStatus, Conversation, ChatMessage, TeamMember, DemandHistoryEntry, DemandComment } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface StoreState {
   // User
   currentUser: { id: string; name: string; email: string; role: string } | null;
+  
+  // Team Members (Equipe de Criação)
+  teamMembers: TeamMember[];
+  addTeamMember: (member: Omit<TeamMember, 'id' | 'created_at'>) => void;
+  updateTeamMember: (id: string, member: Partial<TeamMember>) => void;
+  deleteTeamMember: (id: string) => void;
   
   // Clients
   clients: Client[];
@@ -19,12 +25,25 @@ interface StoreState {
   updateAgent: (id: string, agent: Partial<Agent>) => void;
   deleteAgent: (id: string) => void;
   
-  // Demands (novo sistema de workflow)
+  // Demands (Workflow completo estilo mLabs)
   demands: Demand[];
-  addDemand: (demand: Omit<Demand, 'id' | 'created_at' | 'approval_token'>) => string;
+  addDemand: (demand: Omit<Demand, 'id' | 'created_at' | 'updated_at' | 'approval_token' | 'history'>) => string;
   updateDemand: (id: string, demand: Partial<Demand>) => void;
   deleteDemand: (id: string) => void;
-  moveDemand: (id: string, status: DemandStatus) => void;
+  moveDemand: (id: string, status: DemandStatus, userName?: string) => void;
+  
+  // Demand History
+  addDemandHistory: (demandId: string, entry: Omit<DemandHistoryEntry, 'id' | 'demand_id' | 'created_at'>) => void;
+  
+  // Demand Comments
+  addDemandComment: (demandId: string, comment: Omit<DemandComment, 'id' | 'demand_id' | 'created_at'>) => void;
+  
+  // Approval Actions
+  approveByInternal: (demandId: string, approverId: string, userName: string) => void;
+  requestAdjustmentByInternal: (demandId: string, approverId: string, feedback: string, userName: string) => void;
+  approveByExternal: (demandId: string, approverId: string, userName: string) => void;
+  requestAdjustmentByExternal: (demandId: string, approverId: string, feedback: string, userName: string) => void;
+  approveAllPendingByToken: (token: string, userName: string) => void;
   
   // Filters
   demandFilters: {
@@ -53,6 +72,12 @@ interface StoreState {
   apiConfig: APIConfig;
   setApiConfig: (config: Partial<APIConfig>) => void;
 }
+
+// Default Team Members
+const defaultTeamMembers: Omit<TeamMember, 'id' | 'created_at'>[] = [
+  { name: 'Agência Base', email: 'contato@agenciabase.com', role: 'manager', is_active: true },
+  { name: 'Kendy Produções', email: 'kendy@producoes.com', role: 'both', is_active: true },
+];
 
 const defaultAgents: Omit<Agent, 'id' | 'created_at'>[] = [
   {
@@ -104,9 +129,21 @@ Sempre retorne demandas em formato JSON quando solicitado.`,
 
 export const useStore = create<StoreState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       // User
       currentUser: { id: '1', name: 'Admin', email: 'admin@base.ai', role: 'admin' },
+      
+      // Team Members
+      teamMembers: defaultTeamMembers.map((m) => ({ ...m, id: uuidv4(), created_at: new Date().toISOString() })),
+      addTeamMember: (member) => set((state) => ({
+        teamMembers: [...state.teamMembers, { ...member, id: uuidv4(), created_at: new Date().toISOString() }]
+      })),
+      updateTeamMember: (id, updates) => set((state) => ({
+        teamMembers: state.teamMembers.map((m) => m.id === id ? { ...m, ...updates } : m)
+      })),
+      deleteTeamMember: (id) => set((state) => ({
+        teamMembers: state.teamMembers.filter((m) => m.id !== id)
+      })),
       
       // Clients
       clients: [],
@@ -138,25 +175,244 @@ export const useStore = create<StoreState>()(
       addDemand: (demand) => {
         const id = uuidv4();
         const token = uuidv4().replace(/-/g, '');
+        const now = new Date().toISOString();
+        const historyEntry: DemandHistoryEntry = {
+          id: uuidv4(),
+          demand_id: id,
+          action: 'created',
+          description: 'Demanda criada',
+          user_name: get().currentUser?.name || 'Sistema',
+          created_at: now,
+        };
         set((state) => ({
           demands: [...state.demands, {
             ...demand,
             id,
-            created_at: new Date().toISOString(),
+            created_at: now,
+            updated_at: now,
             approval_token: token,
+            history: [historyEntry],
+            comments: demand.comments || [],
+            internal_approvers: demand.internal_approvers || [],
+            external_approvers: demand.external_approvers || [],
+            skip_internal_approval: demand.skip_internal_approval || false,
+            skip_external_approval: demand.skip_external_approval || false,
+            approval_link_sent: false,
+            is_draft: demand.is_draft || false,
           }]
         }));
         return id;
       },
       updateDemand: (id, updates) => set((state) => ({
-        demands: state.demands.map((d) => d.id === id ? { ...d, ...updates } : d)
+        demands: state.demands.map((d) => d.id === id ? { ...d, ...updates, updated_at: new Date().toISOString() } : d)
       })),
       deleteDemand: (id) => set((state) => ({
         demands: state.demands.filter((d) => d.id !== id)
       })),
-      moveDemand: (id, status) => set((state) => ({
-        demands: state.demands.map((d) => d.id === id ? { ...d, status } : d)
+      moveDemand: (id, status, userName) => {
+        const demand = get().demands.find((d) => d.id === id);
+        if (!demand) return;
+        
+        const historyEntry: DemandHistoryEntry = {
+          id: uuidv4(),
+          demand_id: id,
+          action: 'status_changed',
+          description: `Status alterado para ${status}`,
+          user_name: userName || get().currentUser?.name || 'Sistema',
+          old_value: demand.status,
+          new_value: status,
+          created_at: new Date().toISOString(),
+        };
+        
+        set((state) => ({
+          demands: state.demands.map((d) => d.id === id ? { 
+            ...d, 
+            status, 
+            updated_at: new Date().toISOString(),
+            history: [...d.history, historyEntry]
+          } : d)
+        }));
+      },
+      
+      // Demand History
+      addDemandHistory: (demandId, entry) => set((state) => ({
+        demands: state.demands.map((d) => d.id === demandId ? {
+          ...d,
+          history: [...d.history, { ...entry, id: uuidv4(), demand_id: demandId, created_at: new Date().toISOString() }]
+        } : d)
       })),
+      
+      // Demand Comments
+      addDemandComment: (demandId, comment) => set((state) => ({
+        demands: state.demands.map((d) => d.id === demandId ? {
+          ...d,
+          comments: [...d.comments, { ...comment, id: uuidv4(), demand_id: demandId, created_at: new Date().toISOString() }]
+        } : d)
+      })),
+      
+      // Approval Actions - Internal
+      approveByInternal: (demandId, approverId, userName) => {
+        const demand = get().demands.find((d) => d.id === demandId);
+        if (!demand) return;
+        
+        const updatedApprovers = demand.internal_approvers.map((a) => 
+          a.approver_id === approverId ? { ...a, status: 'approved' as const, approved_at: new Date().toISOString() } : a
+        );
+        
+        // Check if all internal approvers approved
+        const allInternalApproved = updatedApprovers.every((a) => a.status === 'approved');
+        
+        const historyEntry: DemandHistoryEntry = {
+          id: uuidv4(),
+          demand_id: demandId,
+          action: 'approved',
+          description: `Aprovado internamente por ${userName}`,
+          user_name: userName,
+          created_at: new Date().toISOString(),
+        };
+        
+        set((state) => ({
+          demands: state.demands.map((d) => d.id === demandId ? {
+            ...d,
+            internal_approvers: updatedApprovers,
+            approval_status: allInternalApproved ? 'internal_approved' : d.approval_status,
+            status: allInternalApproved ? 'aprovacao_cliente' : d.status,
+            history: [...d.history, historyEntry],
+            updated_at: new Date().toISOString(),
+          } : d)
+        }));
+      },
+      
+      requestAdjustmentByInternal: (demandId, approverId, feedback, userName) => {
+        const demand = get().demands.find((d) => d.id === demandId);
+        if (!demand) return;
+        
+        const updatedApprovers = demand.internal_approvers.map((a) => 
+          a.approver_id === approverId ? { ...a, status: 'adjustment_requested' as const, feedback } : a
+        );
+        
+        const historyEntry: DemandHistoryEntry = {
+          id: uuidv4(),
+          demand_id: demandId,
+          action: 'adjustment_requested',
+          description: `Ajuste solicitado por ${userName}: ${feedback}`,
+          user_name: userName,
+          created_at: new Date().toISOString(),
+        };
+        
+        set((state) => ({
+          demands: state.demands.map((d) => d.id === demandId ? {
+            ...d,
+            internal_approvers: updatedApprovers,
+            approval_status: 'needs_adjustment',
+            status: 'ajustes',
+            history: [...d.history, historyEntry],
+            updated_at: new Date().toISOString(),
+          } : d)
+        }));
+      },
+      
+      // Approval Actions - External
+      approveByExternal: (demandId, approverId, userName) => {
+        const demand = get().demands.find((d) => d.id === demandId);
+        if (!demand) return;
+        
+        const updatedApprovers = demand.external_approvers.map((a) => 
+          a.approver_id === approverId ? { ...a, status: 'approved' as const, approved_at: new Date().toISOString() } : a
+        );
+        
+        // Check if all external approvers approved (in order)
+        const allExternalApproved = updatedApprovers.every((a) => a.status === 'approved');
+        
+        const historyEntry: DemandHistoryEntry = {
+          id: uuidv4(),
+          demand_id: demandId,
+          action: 'approved',
+          description: `Aprovado pelo cliente ${userName}`,
+          user_name: userName,
+          created_at: new Date().toISOString(),
+        };
+        
+        let newStatus: DemandStatus = demand.status;
+        if (allExternalApproved) {
+          newStatus = demand.auto_schedule ? 'aprovado_agendado' : 'aguardando_agendamento';
+        }
+        
+        set((state) => ({
+          demands: state.demands.map((d) => d.id === demandId ? {
+            ...d,
+            external_approvers: updatedApprovers,
+            approval_status: allExternalApproved ? 'approved' : d.approval_status,
+            status: newStatus,
+            history: [...d.history, historyEntry],
+            updated_at: new Date().toISOString(),
+          } : d)
+        }));
+      },
+      
+      requestAdjustmentByExternal: (demandId, approverId, feedback, userName) => {
+        const demand = get().demands.find((d) => d.id === demandId);
+        if (!demand) return;
+        
+        const updatedApprovers = demand.external_approvers.map((a) => 
+          a.approver_id === approverId ? { ...a, status: 'adjustment_requested' as const, feedback } : a
+        );
+        
+        const historyEntry: DemandHistoryEntry = {
+          id: uuidv4(),
+          demand_id: demandId,
+          action: 'adjustment_requested',
+          description: `Ajuste solicitado pelo cliente ${userName}: ${feedback}`,
+          user_name: userName,
+          created_at: new Date().toISOString(),
+        };
+        
+        set((state) => ({
+          demands: state.demands.map((d) => d.id === demandId ? {
+            ...d,
+            external_approvers: updatedApprovers,
+            approval_status: 'needs_adjustment',
+            status: 'ajustes',
+            history: [...d.history, historyEntry],
+            updated_at: new Date().toISOString(),
+          } : d)
+        }));
+      },
+      
+      // Approve all pending demands by token
+      approveAllPendingByToken: (token, userName) => {
+        const demandsToApprove = get().demands.filter(
+          (d) => d.approval_token === token && d.status === 'aprovacao_cliente'
+        );
+        
+        demandsToApprove.forEach((demand) => {
+          const updatedApprovers = demand.external_approvers.map((a) => ({
+            ...a,
+            status: 'approved' as const,
+            approved_at: new Date().toISOString()
+          }));
+          
+          const historyEntry: DemandHistoryEntry = {
+            id: uuidv4(),
+            demand_id: demand.id,
+            action: 'approved',
+            description: `Aprovado em lote pelo cliente ${userName}`,
+            user_name: userName,
+            created_at: new Date().toISOString(),
+          };
+          
+          set((state) => ({
+            demands: state.demands.map((d) => d.id === demand.id ? {
+              ...d,
+              external_approvers: updatedApprovers,
+              approval_status: 'approved',
+              status: demand.auto_schedule ? 'aprovado_agendado' : 'aguardando_agendamento',
+              history: [...d.history, historyEntry],
+              updated_at: new Date().toISOString(),
+            } : d)
+          }));
+        });
+      },
 
       // Filters
       demandFilters: {
@@ -200,12 +456,15 @@ export const useStore = create<StoreState>()(
       // API Config
       apiConfig: {
         gemini_key: 'AIzaSyDQuaiWaBwgfFbvZ0LkntIl3__YuaM3JDU',
+        openrouter_key: '',
         google_drive_connected: false,
+        late_api_key: '',
+        late_connected_accounts: [],
       },
       setApiConfig: (config) => set((state) => ({
         apiConfig: { ...state.apiConfig, ...config }
       })),
     }),
-    { name: 'base-agency-store' }
+    { name: 'base-agency-store-v2' }
   )
 );
