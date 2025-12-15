@@ -1,6 +1,24 @@
 # 🚀 BASE Agency - Super SaaS para Agências de Marketing
 
+> **v4.0.1** - Última atualização: 15/12/2025 09:30
+
 Sistema completo de gerenciamento de demandas com time de agentes de IA especializados.
+
+## 📊 Módulos Completos
+
+| Módulo | Status | Descrição |
+|--------|--------|-----------|
+| Dashboard | ✅ | Métricas, gráficos, atividade recente |
+| Chat IA | ✅ | 7 agentes, streaming, criação auto de tarefas |
+| Workflow | ✅ | Kanban 5 colunas, drag & drop |
+| Clientes | ✅ | CRUD completo, CNPJ, status |
+| Contratos | ✅ | Gestão de contratos por cliente |
+| Financeiro | ✅ | Receitas, despesas, relatórios |
+| Conteúdos | ✅ | Biblioteca de mídias |
+| Agentes IA | ✅ | Configuração, base de conhecimento |
+| Conhecimento | ✅ | Upload global, gestão por agente |
+| Equipe | ✅ | Membros, níveis de acesso |
+| Configurações | ✅ | Perfil, API, backup |
 
 ![BASE Agency](https://img.shields.io/badge/BASE-Agency-orange?style=for-the-badge)
 ![React](https://img.shields.io/badge/React-18-blue?style=flat-square)
