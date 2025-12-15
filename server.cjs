@@ -6,8 +6,8 @@ const PORT = process.env.PORT || 3000;
 // Serve arquivos estáticos da pasta dist
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Para Express 5, usar sintaxe correta para catch-all
-app.get('/{*splat}', (req, res) => {
+// Catch-all para SPA - Express 4 sintaxe
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
