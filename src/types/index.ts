@@ -1,137 +1,45 @@
-// Agent Types
-export enum AgentRole {
-  MANAGER = 'Gestor',
-  PLANNER = 'Planejador',
-  CAROUSEL = 'Criador de Carrossel',
-  SCRIPT = 'Roteirista',
-  POST = 'Criador de Post',
-  CAPTION = 'Criador de Legenda',
-  SPREADSHEET = 'Editor de Planilha',
-}
+// ==================== USER & AUTH ====================
+export type UserRole = 'admin' | 'manager' | 'member';
 
-export type GeminiModelType = 'gemini-2.5-flash' | 'gemini-2.5-flash-lite-latest' | 'gemini-2.0-flash';
+export interface User { id: string; name: string; email: string; role: UserRole; avatar?: string; permissions: string[]; createdAt: string; }
 
-export interface Agent {
-  id: string;
-  name: string;
-  role: AgentRole;
-  avatar: string;
-  model: GeminiModelType;
-  systemInstruction: string;
-  description: string;
-  files: KnowledgeFile[];
-  isOnline?: boolean;
-}
+// ==================== AGENTS ====================
+export interface KnowledgeFile { id: string; name: string; content: string; type: string; uploadedAt: string; }
 
-// Knowledge Files
-export type FileSource = 'upload' | 'gdrive' | 'gmail' | 'sheets';
+export interface Agent { id: string; name: string; role: string; avatar: string; systemInstruction: string; description: string; model: string; isOnline: boolean; knowledgeFiles: KnowledgeFile[]; }
 
-export interface KnowledgeFile {
-  id: string;
-  name: string;
-  content: string;
-  type: 'text' | 'csv' | 'json' | 'pdf' | 'doc';
-  source: FileSource;
-  lastModified: Date;
-}
+// ==================== CLIENTS ====================
+export interface Client { id: string; name: string; email: string; phone: string; company: string; cnpj?: string; address?: string; color: string; logo?: string; notes?: string; status: 'active' | 'inactive' | 'prospect'; createdAt: string; }
 
-// Chat Types
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'model';
-  text: string;
-  timestamp: Date;
-  senderName?: string;
-  senderAvatar?: string;
-  isThinking?: boolean;
-}
+// ==================== CONTRACTS ====================
+export interface Contract { id: string; clientId: string; title: string; description?: string; value: number; billingCycle: 'monthly' | 'quarterly' | 'yearly' | 'once'; services: string[]; startDate: string; endDate?: string; status: 'active' | 'paused' | 'cancelled' | 'completed'; createdAt: string; }
 
-export interface TeamMessage {
-  id: string;
-  senderId: string;
-  senderName: string;
-  senderAvatar?: string;
-  text: string;
-  timestamp: Date;
-  read: boolean;
-  channel?: string;
-}
+// ==================== FINANCIAL ====================
+export type TransactionType = 'income' | 'expense';
+export type TransactionStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
+export type TransactionCategory = 'contract' | 'service' | 'tool' | 'salary' | 'tax' | 'other';
 
-export interface DirectMessage {
-  id: string;
-  senderId: string;
-  receiverId: string;
-  senderName: string;
-  text: string;
-  timestamp: Date;
-  read: boolean;
-}
+export interface Transaction { id: string; clientId?: string; contractId?: string; type: TransactionType; category: TransactionCategory; description: string; value: number; dueDate: string; paidDate?: string; status: TransactionStatus; recurrent: boolean; createdAt: string; }
 
-// Task / Demand Types
-export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'scheduled' | 'approved' | 'done';
-export type TaskPriority = 'low' | 'medium' | 'high';
-export type SocialChannel = 'instagram' | 'linkedin' | 'tiktok' | 'youtube' | 'blog' | 'facebook';
+// ==================== TASKS ====================
+export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'approved' | 'published';
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type SocialChannel = 'instagram' | 'facebook' | 'tiktok' | 'youtube' | 'linkedin' | 'twitter';
 
-export interface Task {
-  id: string;
-  title: string;
-  description: string;
-  caption?: string;
-  status: TaskStatus;
-  priority: TaskPriority;
-  assignedAgentId?: string;
-  channel?: SocialChannel;
-  mediaUrls?: string[];
-  scheduledDate?: Date;
-  approvalStatus?: 'pending' | 'approved' | 'rejected';
-  clientId?: string;
-  clientName?: string;
-  clientEmail?: string;
-  externalLinkToken?: string;
-  createdAt: Date;
-  updatedAt?: Date;
-}
+export interface Task { id: string; clientId: string; title: string; description: string; caption?: string; status: TaskStatus; priority: TaskPriority; channel: SocialChannel; assignedAgentId?: string; assignedUserId?: string; mediaUrls: string[]; scheduledDate?: string; publishedDate?: string; approvalToken: string; approvalStatus: 'pending' | 'approved' | 'rejected'; approvalFeedback?: string; createdAt: string; }
 
-// Client Types
-export interface Client {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  company?: string;
-  color: string;
-  logo?: string;
-  createdAt: Date;
-}
+// ==================== CONTENT LIBRARY ====================
+export interface Content { id: string; clientId: string; taskId?: string; title: string; contentType: string; channel: SocialChannel; content: string; mediaUrls: string[]; hashtags: string[]; status: 'draft' | 'scheduled' | 'published'; scheduledAt?: string; publishedAt?: string; createdAt: string; }
 
-// Media Types
-export type MediaType = 'image' | 'video';
+// ==================== CHAT ====================
+export interface ChatMessage { id: string; role: 'user' | 'model'; text: string; timestamp: string; agentId?: string; agentName?: string; agentAvatar?: string; createdTask?: Task; }
 
-export interface GeneratedMedia {
-  id: string;
-  type: MediaType;
-  url: string;
-  prompt: string;
-  timestamp: Date;
-  aspectRatio?: string;
-  modelUsed: string;
-}
+// ==================== NOTIFICATIONS ====================
+export type NotificationType = 'info' | 'success' | 'warning' | 'error';
+export interface Notification { id: string; title: string; message: string; type: NotificationType; read: boolean; link?: string; timestamp: string; }
 
-// Notification Types
-export interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  read: boolean;
-  timestamp: Date;
-}
+// ==================== TEAM ====================
+export interface TeamMember { id: string; name: string; email: string; role: UserRole; avatar?: string; permissions: { clients: boolean; contracts: boolean; financial: boolean; team: boolean; settings: boolean; }; createdAt: string; }
 
-// User Types
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'admin' | 'manager' | 'member';
-  avatar?: string;
-}
+// ==================== DASHBOARD ====================
+export interface DashboardMetrics { totalClients: number; activeContracts: number; monthlyRevenue: number; pendingTasks: number; completedTasks: number; pendingPayments: number; overduePayments: number; contentPublished: number; }

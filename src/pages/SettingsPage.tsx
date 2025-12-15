@@ -1,191 +1,67 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Icons } from '../components/Icons';
 import { useStore } from '../store';
+import clsx from 'clsx';
 
 export const SettingsPage: React.FC = () => {
-  const { user, setUser, addNotification } = useStore();
+  const { user, updateUser, addNotification } = useStore();
+  const [activeTab, setActiveTab] = useState<'profile' | 'agency' | 'integrations' | 'notifications'>('profile');
+  const [profileData, setProfileData] = useState({ name: user.name, email: user.email, avatar: user.avatar || '' });
+  const [agencyData, setAgencyData] = useState({ name: 'BASE Agency', logo: '', primaryColor: '#f97316', timezone: 'America/Sao_Paulo' });
 
-  const handleExportData = () => {
-    const data = localStorage.getItem('base-agency-storage');
-    if (data) {
-      const blob = new Blob([data], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'base-agency-backup.json';
-      a.click();
-      
-      addNotification({
-        id: Date.now().toString(),
-        title: 'Backup Exportado',
-        message: 'Arquivo JSON salvo com sucesso',
-        type: 'success',
-        read: false,
-        timestamp: new Date()
-      });
-    }
-  };
+  const handleSaveProfile = () => { updateUser(profileData); addNotification({ id: `notif-${Date.now()}`, title: 'Perfil Atualizado', message: 'Suas informações foram salvas', type: 'success', read: false, timestamp: new Date().toISOString() }); };
 
-  const handleResetAll = () => {
-    if (confirm('⚠️ ATENÇÃO!\n\nIsso irá apagar TODOS os dados:\n- Agentes e configurações\n- Tarefas e demandas\n- Arquivos de conhecimento\n- Mensagens\n\nTem certeza?')) {
-      localStorage.clear();
-      window.location.reload();
-    }
-  };
-
-  const handleSaveProfile = () => {
-    addNotification({
-      id: Date.now().toString(),
-      title: 'Perfil Atualizado',
-      message: 'Suas informações foram salvas',
-      type: 'success',
-      read: false,
-      timestamp: new Date()
-    });
-  };
+  const tabs = [{ id: 'profile', label: 'Perfil', icon: Icons.User }, { id: 'agency', label: 'Agência', icon: Icons.Client }, { id: 'integrations', label: 'Integrações', icon: Icons.Zap }, { id: 'notifications', label: 'Notificações', icon: Icons.Bell }];
 
   return (
-    <div className="h-full bg-gray-950 overflow-y-auto">
-      <div className="max-w-2xl mx-auto p-8">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-3 mb-8">
-          <Icons.Settings size={28} className="text-orange-400" />
-          Configurações
-        </h1>
-
-        {/* API Status */}
-        <div className="bg-gradient-to-r from-green-900/20 to-emerald-900/20 rounded-2xl border border-green-500/30 p-6 mb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center">
-              <Icons.Success size={24} className="text-green-400" />
-            </div>
-            <div>
-              <h2 className="font-bold text-white flex items-center gap-2">
-                Gemini AI Conectado ✅
-              </h2>
-              <p className="text-sm text-gray-400">
-                API Key configurada e funcionando
-              </p>
+    <div className="h-full bg-gray-950 flex">
+      <div className="w-64 border-r border-gray-800 p-4">
+        <h1 className="text-xl font-bold text-white flex items-center gap-2 mb-6"><Icons.Settings size={24} className="text-orange-400" />Configurações</h1>
+        <nav className="space-y-1">{tabs.map(tab => { const Icon = tab.icon; return (<button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={clsx('w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all', activeTab === tab.id ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'text-gray-400 hover:bg-gray-800 hover:text-white')}><Icon size={18} />{tab.label}</button>); })}</nav>
+      </div>
+      <div className="flex-1 overflow-y-auto p-6">
+        {activeTab === 'profile' && (
+          <div className="max-w-xl">
+            <h2 className="text-lg font-bold text-white mb-6">Perfil do Usuário</h2>
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 space-y-4">
+              <div className="flex items-center gap-4 mb-6"><div className="w-20 h-20 rounded-xl bg-gradient-to-br from-orange-500 to-pink-500 flex items-center justify-center text-white font-bold text-2xl">{profileData.name.charAt(0)}</div><div><h3 className="font-bold text-white">{profileData.name}</h3><p className="text-sm text-gray-500">{profileData.email}</p><p className="text-xs text-orange-400 capitalize mt-1">{user.role}</p></div></div>
+              <div><label className="text-xs font-bold text-gray-500 uppercase block mb-1.5">Nome</label><input type="text" value={profileData.name} onChange={(e) => setProfileData({ ...profileData, name: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:border-orange-500 focus:outline-none" /></div>
+              <div><label className="text-xs font-bold text-gray-500 uppercase block mb-1.5">Email</label><input type="email" value={profileData.email} onChange={(e) => setProfileData({ ...profileData, email: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:border-orange-500 focus:outline-none" /></div>
+              <button onClick={handleSaveProfile} className="w-full py-2.5 bg-orange-600 text-white rounded-lg hover:bg-orange-500 font-bold mt-4">Salvar Alterações</button>
             </div>
           </div>
-          <div className="mt-4 p-3 bg-gray-900/50 rounded-lg">
-            <p className="text-xs text-gray-500 font-mono">
-              API Key: AIzaSy***...***JDU (oculta por segurança)
-            </p>
-          </div>
-        </div>
-
-        {/* User Profile */}
-        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 mb-6">
-          <h2 className="font-bold text-white mb-4 flex items-center gap-2">
-            <Icons.User size={18} className="text-blue-400" />
-            Perfil do Usuário
-          </h2>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Nome</label>
-              <input
-                type="text"
-                value={user?.name || ''}
-                onChange={(e) => setUser(user ? { ...user, name: e.target.value } : null)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none"
-              />
+        )}
+        {activeTab === 'agency' && (
+          <div className="max-w-xl">
+            <h2 className="text-lg font-bold text-white mb-6">Configurações da Agência</h2>
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 space-y-4">
+              <div><label className="text-xs font-bold text-gray-500 uppercase block mb-1.5">Nome da Agência</label><input type="text" value={agencyData.name} onChange={(e) => setAgencyData({ ...agencyData, name: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:border-orange-500 focus:outline-none" /></div>
+              <div><label className="text-xs font-bold text-gray-500 uppercase block mb-1.5">Cor Principal</label><div className="flex items-center gap-3"><input type="color" value={agencyData.primaryColor} onChange={(e) => setAgencyData({ ...agencyData, primaryColor: e.target.value })} className="w-12 h-10 rounded-lg bg-transparent border-0 cursor-pointer" /><input type="text" value={agencyData.primaryColor} onChange={(e) => setAgencyData({ ...agencyData, primaryColor: e.target.value })} className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:border-orange-500 focus:outline-none" /></div></div>
+              <div><label className="text-xs font-bold text-gray-500 uppercase block mb-1.5">Fuso Horário</label><select value={agencyData.timezone} onChange={(e) => setAgencyData({ ...agencyData, timezone: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:border-orange-500 focus:outline-none"><option value="America/Sao_Paulo">Brasília (GMT-3)</option><option value="America/New_York">Nova York (GMT-5)</option><option value="Europe/London">Londres (GMT)</option></select></div>
+              <button className="w-full py-2.5 bg-orange-600 text-white rounded-lg hover:bg-orange-500 font-bold mt-4">Salvar Configurações</button>
             </div>
-            <div>
-              <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Email</label>
-              <input
-                type="email"
-                value={user?.email || ''}
-                onChange={(e) => setUser(user ? { ...user, email: e.target.value } : null)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none"
-              />
+          </div>
+        )}
+        {activeTab === 'integrations' && (
+          <div className="max-w-xl">
+            <h2 className="text-lg font-bold text-white mb-6">Integrações</h2>
+            <div className="space-y-4">
+              {[{ name: 'Google Gemini', desc: 'IA para geração de conteúdo', connected: true, icon: '🤖' }, { name: 'Instagram', desc: 'Publicação automática', connected: false, icon: '📸' }, { name: 'Meta Ads', desc: 'Gerenciamento de anúncios', connected: false, icon: '📊' }, { name: 'Google Analytics', desc: 'Métricas de performance', connected: false, icon: '📈' }].map(int => (
+                <div key={int.name} className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center justify-between"><div className="flex items-center gap-4"><span className="text-2xl">{int.icon}</span><div><h3 className="font-medium text-white">{int.name}</h3><p className="text-xs text-gray-500">{int.desc}</p></div></div><button className={clsx('px-4 py-2 rounded-lg text-sm font-medium', int.connected ? 'bg-green-500/20 text-green-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>{int.connected ? '✓ Conectado' : 'Conectar'}</button></div>
+              ))}
             </div>
-            <button
-              onClick={handleSaveProfile}
-              className="w-full py-3 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-500 flex items-center justify-center gap-2 transition-colors"
-            >
-              <Icons.Save size={18} /> Salvar Perfil
-            </button>
           </div>
-        </div>
-
-        {/* Data Management */}
-        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 mb-6">
-          <h2 className="font-bold text-white mb-4 flex items-center gap-2">
-            <Icons.Drive size={18} className="text-green-400" />
-            Gerenciamento de Dados
-          </h2>
-          
-          <div className="space-y-3">
-            <button
-              onClick={handleExportData}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              <Icons.Download size={18} />
-              Exportar Todos os Dados (JSON)
-            </button>
-            
-            <button
-              onClick={handleResetAll}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-red-900/20 text-red-400 rounded-lg hover:bg-red-900/30 transition-colors"
-            >
-              <Icons.Delete size={18} />
-              Resetar Aplicativo (Apagar Tudo)
-            </button>
+        )}
+        {activeTab === 'notifications' && (
+          <div className="max-w-xl">
+            <h2 className="text-lg font-bold text-white mb-6">Preferências de Notificação</h2>
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 space-y-4">
+              {[{ id: 'tasks', label: 'Novas tarefas', desc: 'Quando uma demanda for criada' }, { id: 'approvals', label: 'Aprovações', desc: 'Quando um conteúdo for aprovado/rejeitado' }, { id: 'payments', label: 'Pagamentos', desc: 'Quando um pagamento for recebido' }, { id: 'reports', label: 'Relatórios', desc: 'Relatórios semanais de performance' }].map(pref => (
+                <label key={pref.id} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800"><div><h4 className="font-medium text-white text-sm">{pref.label}</h4><p className="text-xs text-gray-500">{pref.desc}</p></div><input type="checkbox" defaultChecked className="w-5 h-5 rounded bg-gray-800 border-gray-700 text-orange-500 focus:ring-orange-500" /></label>
+              ))}
+            </div>
           </div>
-        </div>
-
-        {/* Features Status */}
-        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 mb-6">
-          <h2 className="font-bold text-white mb-4 flex items-center gap-2">
-            <Icons.Zap size={18} className="text-yellow-400" />
-            Status das Funcionalidades
-          </h2>
-          
-          <div className="space-y-3">
-            {[
-              { name: 'Chat com IA', status: 'active', desc: 'Converse com agentes especializados' },
-              { name: 'Treinamento de Agentes', status: 'active', desc: 'Injete conhecimento nos agentes' },
-              { name: 'Workflow Kanban', status: 'active', desc: 'Gestão de demandas com drag-drop' },
-              { name: 'Estúdio Criativo', status: 'active', desc: 'Geração de imagens + legendas' },
-              { name: 'Base de Conhecimento', status: 'active', desc: 'Upload de arquivos globais' },
-              { name: 'Inbox da Equipe', status: 'active', desc: 'Chat em canais e mensagens diretas' },
-              { name: 'Notificações', status: 'active', desc: 'Alertas em tempo real' },
-            ].map((feature, i) => (
-              <div key={i} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                <div>
-                  <p className="font-medium text-white text-sm">{feature.name}</p>
-                  <p className="text-xs text-gray-500">{feature.desc}</p>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  feature.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
-                }`}>
-                  {feature.status === 'active' ? '✅ Ativo' : '🔄 Em breve'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* About */}
-        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
-          <h2 className="font-bold text-white mb-4 flex items-center gap-2">
-            <Icons.Info size={18} className="text-purple-400" />
-            Sobre o BASE Agency
-          </h2>
-          
-          <div className="text-sm text-gray-500 space-y-2">
-            <p><strong className="text-white">Versão:</strong> 2.0.0</p>
-            <p><strong className="text-white">Desenvolvido por:</strong> BASE Marketing Agency</p>
-            <p><strong className="text-white">Tecnologias:</strong> React, TypeScript, Tailwind CSS, Zustand, Google Gemini AI</p>
-          </div>
-          
-          <div className="mt-4 pt-4 border-t border-gray-800">
-            <p className="text-xs text-gray-600">
-              Super SaaS para gerenciamento de agência de marketing digital com time de agentes de IA especializados, treinamento personalizado e geração de conteúdo.
-            </p>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

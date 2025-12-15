@@ -2,10 +2,6 @@
   "version": 2,
   "builds": [
     {
-      "src": "server/server.js",
-      "use": "@vercel/node"
-    },
-    {
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
@@ -14,7 +10,20 @@
     }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "server/server.js" },
-    { "src": "/(.*)", "dest": "/dist/$1" }
+    {
+      "src": "/api/(.*)",
+      "dest": "https://base-agency-api.onrender.com/api/$1"
+    },
+    {
+      "src": "/approval/(.*)",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ],
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

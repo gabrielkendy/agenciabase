@@ -1,107 +1,95 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Icons } from './Icons';
 import { useStore } from '../store';
+import clsx from 'clsx';
 
 interface SidebarProps {
   activeView: string;
   onViewChange: (view: string) => void;
 }
 
-const menuItems = [
-  { id: 'chat', icon: Icons.Chat, label: 'Chat IA' },
-  { id: 'inbox', icon: Icons.MessageCircle, label: 'Inbox Equipe' },
-  { id: 'workflow', icon: Icons.Board, label: 'Workflow' },
-  { id: 'agents', icon: Icons.Agents, label: 'Agentes' },
-  { id: 'knowledge', icon: Icons.Drive, label: 'Conhecimento' },
-  { id: 'studio', icon: Icons.Wand, label: 'Estúdio Criativo' },
+const MENU_ITEMS = [
+  { id: 'dashboard', label: 'Dashboard', icon: Icons.Dashboard },
+  { id: 'chat', label: 'Chat IA', icon: Icons.Chat },
+  { id: 'workflow', label: 'Workflow', icon: Icons.Kanban },
+  { id: 'clients', label: 'Clientes', icon: Icons.Client },
+  { id: 'contracts', label: 'Contratos', icon: Icons.Contract },
+  { id: 'financial', label: 'Financeiro', icon: Icons.Money },
+  { id: 'content', label: 'Conteúdos', icon: Icons.Folder },
+  { id: 'agents', label: 'Agentes IA', icon: Icons.Agents },
+  { id: 'knowledge', label: 'Conhecimento', icon: Icons.Knowledge },
+  { id: 'team', label: 'Equipe', icon: Icons.Users },
+  { id: 'settings', label: 'Configurações', icon: Icons.Settings },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange }) => {
-  const [collapsed, setCollapsed] = useState(false);
-  const { user, notifications } = useStore();
-  const unreadCount = notifications.filter(n => !n.read).length;
-
+  const { user, clients, selectedClientId, setSelectedClientId } = useStore();
+  
   return (
-    <aside className={`h-screen bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-300 ${collapsed ? 'w-20' : 'w-64'}`}>
-      {/* Logo */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-gray-800">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center font-bold text-white shadow-lg shadow-orange-500/20">
-            B
+    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
+      <div className="h-16 flex items-center px-4 border-b border-gray-800">
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
+            <Icons.Zap size={24} className="text-white" />
           </div>
-          {!collapsed && (
-            <div>
-              <h1 className="font-bold text-white">BASE Agency</h1>
-              <p className="text-[10px] text-gray-500">Super SaaS</p>
-            </div>
-          )}
+          <div>
+            <h1 className="font-bold text-white text-lg">BASE Agency</h1>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider">SaaS v4.0</p>
+          </div>
         </div>
-        <button 
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-1 rounded-lg hover:bg-gray-800 text-gray-500 transition-colors"
-        >
-          {collapsed ? <Icons.ChevronRight size={18} /> : <Icons.ChevronLeft size={18} />}
-        </button>
       </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeView === item.id;
-          const showBadge = item.id === 'workflow' && unreadCount > 0;
-          
-          return (
-            <button
-              key={item.id}
-              onClick={() => onViewChange(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-                isActive 
-                  ? 'bg-orange-500/10 text-orange-400 border border-orange-500/30' 
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-              }`}
-            >
-              <Icon size={20} />
-              {!collapsed && (
-                <span className="flex-1 text-left font-medium">{item.label}</span>
-              )}
-              {showBadge && (
-                <span className="bg-red-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-          );
-        })}
-        
-        {/* Settings */}
-        <div className="pt-4 mt-4 border-t border-gray-800">
-          <button
-            onClick={() => onViewChange('settings')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-              activeView === 'settings' 
-                ? 'bg-orange-500/10 text-orange-400 border border-orange-500/30' 
-                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-            }`}
-          >
-            <Icons.Settings size={20} />
-            {!collapsed && <span className="font-medium">Configurações</span>}
-          </button>
-        </div>
+      
+      <div className="p-3 border-b border-gray-800">
+        <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1.5">Filtrar Cliente</label>
+        <select
+          value={selectedClientId || ''}
+          onChange={(e) => setSelectedClientId(e.target.value || null)}
+          className="w-full bg-gray-800 border border-gray-700 text-sm text-white rounded-lg px-3 py-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+        >
+          <option value="">Todos os Clientes</option>
+          {clients.map(client => (
+            <option key={client.id} value={client.id}>{client.name}</option>
+          ))}
+        </select>
+      </div>
+      
+      <nav className="flex-1 overflow-y-auto py-3">
+        <ul className="space-y-1 px-2">
+          {MENU_ITEMS.map(item => {
+            const Icon = item.icon;
+            const isActive = activeView === item.id;
+            return (
+              <li key={item.id}>
+                <button
+                  onClick={() => onViewChange(item.id)}
+                  className={clsx(
+                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                    isActive 
+                      ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' 
+                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                  )}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
-
-      {/* User Profile */}
-      <div className="p-4 border-t border-gray-800">
-        <div className={`flex items-center gap-3 p-2 rounded-lg bg-gray-800/50 ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-sm">
-            {user?.name?.charAt(0) || 'U'}
+      
+      <div className="p-3 border-t border-gray-800">
+        <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-800/50">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-pink-500 flex items-center justify-center">
+            <span className="text-white font-bold text-sm">{user.name.charAt(0)}</span>
           </div>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user?.name}</p>
-              <p className="text-[10px] text-gray-500 truncate">{user?.email}</p>
-            </div>
-          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white truncate">{user.name}</p>
+            <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+          </div>
+          <button className="p-1.5 text-gray-500 hover:text-white rounded-lg hover:bg-gray-700">
+            <Icons.LogOut size={16} />
+          </button>
         </div>
       </div>
     </aside>

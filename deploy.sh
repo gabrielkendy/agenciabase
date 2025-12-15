@@ -1,21 +1,61 @@
 #!/bin/bash
-# Script de deploy para BASE Agency
 
-echo "🚀 Iniciando deploy do BASE Agency..."
+# BASE Agency - Script de Deploy
+# ================================
 
-# Configurar git
-git init
-git add .
-git commit -m "BASE Agency v2.0 - Full SaaS with AI Agents"
+echo "🚀 BASE Agency - Deploy Script"
+echo "================================"
 
-# Adicionar remote (substitua pela URL do seu repo)
-git remote add origin https://github.com/gabrielkendy/base-agency-saas.git
-git branch -M main
-git push -u origin main
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
-echo "✅ Código enviado para GitHub!"
+# Build Frontend
+echo -e "${YELLOW}📦 Building frontend...${NC}"
+npm run build
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Build failed!${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ Build successful!${NC}"
+
+# Deploy options
 echo ""
-echo "Próximo passo: Configure no Render.com"
-echo "1. Acesse https://dashboard.render.com/select-repo?type=web"
-echo "2. Conecte o repositório base-agency-saas"
-echo "3. Use as configurações do arquivo render.yaml"
+echo "Choose deploy target:"
+echo "1) Vercel (Frontend)"
+echo "2) Netlify (Frontend)"  
+echo "3) GitHub Pages (Frontend)"
+echo "4) Skip deploy"
+
+read -p "Option [1-4]: " option
+
+case $option in
+    1)
+        echo -e "${YELLOW}🚀 Deploying to Vercel...${NC}"
+        npx vercel --prod
+        ;;
+    2)
+        echo -e "${YELLOW}🚀 Deploying to Netlify...${NC}"
+        npx netlify deploy --prod --dir=dist
+        ;;
+    3)
+        echo -e "${YELLOW}🚀 Deploying to GitHub Pages...${NC}"
+        npx gh-pages -d dist
+        ;;
+    *)
+        echo -e "${GREEN}Skipping deploy. Your build is in ./dist${NC}"
+        ;;
+esac
+
+echo ""
+echo -e "${GREEN}✅ Done!${NC}"
+echo ""
+echo "Next steps for backend:"
+echo "1. Push to GitHub"
+echo "2. Connect to Render.com or Railway"
+echo "3. Set environment variables"
+echo "4. Deploy!"

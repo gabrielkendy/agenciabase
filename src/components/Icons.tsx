@@ -1,122 +1,87 @@
-import { 
-  MessageSquare, Users, Kanban, Bot, FolderOpen, Wand2, Settings,
-  Send, Plus, X, Check, ChevronLeft, ChevronRight, Search, Bell,
-  Upload, Trash2, Edit, Eye, EyeOff, Copy, Link, Mail, Phone,
-  Calendar, Clock, Star, AlertCircle, CheckCircle, Info, Loader2,
-  Image, Video, FileText, Download, ExternalLink, MoreVertical,
-  Sparkles, Zap, Target, TrendingUp, BarChart2, PieChart,
-  Instagram, Linkedin, Youtube, Facebook, Hash, AtSign,
-  Home, LogOut, User, Building2, Palette, Moon, Sun, 
-  ChevronDown, ChevronUp, Filter, SortAsc, Grip, Play, Pause,
-  MessageCircle, Archive, Bookmark, Share2, Heart, ThumbsUp,
-  RefreshCw, Save, Paperclip, Mic, Camera
+import {
+  MessageSquare, Users, LayoutDashboard, Kanban, Bot, Database,
+  Palette, Settings, Bell, Plus, Send, Loader2, X, Check, ChevronDown,
+  ChevronRight, Upload, Trash2, Edit, Copy, ExternalLink, Calendar,
+  DollarSign, FileText, Building2, User, Mail, Phone, Search,
+  Filter, Download, MoreVertical, AlertCircle, Info, CheckCircle,
+  XCircle, Clock, TrendingUp, TrendingDown, BarChart3, PieChart,
+  Image, Video, Hash, Heart, MessageCircle, Share2, Eye, Bookmark,
+  Briefcase, CreditCard, Receipt, FileSignature, FolderOpen, 
+  ArrowUpRight, ArrowDownRight, RefreshCw, LogOut, Moon, Sun,
+  Menu, Home, Zap, Target, Award, Star, Package, Globe, Lock, Unlock
 } from 'lucide-react';
 
 export const Icons = {
-  // Navigation
-  Home,
+  Dashboard: LayoutDashboard,
   Chat: MessageSquare,
-  Team: Users,
-  Board: Kanban,
   Kanban,
   Agents: Bot,
-  Drive: FolderOpen,
-  Wand: Wand2,
+  Knowledge: Database,
+  Studio: Palette,
   Settings,
-  
-  // Actions
-  Send,
+  Users,
+  Home,
+  Menu,
   Plus,
+  Send,
+  Loader: Loader2,
   Close: X,
   Check,
-  Edit,
-  Delete: Trash2,
-  Copy,
-  Link,
-  Upload,
-  Download,
-  Save,
-  Refresh: RefreshCw,
-  
-  // Navigation Arrows
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
-  ChevronUp,
-  
-  // UI
+  ChevronRight,
+  Upload,
+  Delete: Trash2,
+  Edit,
+  Copy,
+  ExternalLink,
+  Download,
+  More: MoreVertical,
   Search,
-  Bell,
-  Eye,
-  EyeOff,
-  MoreVertical,
   Filter,
-  Sort: SortAsc,
-  Grip,
-  Loader: Loader2,
-  
-  // Content
-  Image,
-  Video,
-  File: FileText,
-  FileText,
-  Paperclip,
-  Mic,
-  Camera,
-  
-  // Status
-  Star,
+  Refresh: RefreshCw,
+  LogOut,
+  Bell,
   Alert: AlertCircle,
-  Success: CheckCircle,
   Info,
-  
-  // AI & Creative
-  Sparkles,
-  Zap,
-  Target,
-  Trending: TrendingUp,
-  Chart: BarChart2,
-  Pie: PieChart,
-  
-  // Social
-  Instagram,
-  Linkedin,
-  Youtube,
-  Facebook,
-  Hash,
-  AtSign,
-  
-  // Communication
+  Success: CheckCircle,
+  Error: XCircle,
+  Clock,
+  Money: DollarSign,
+  CreditCard,
+  Receipt,
+  TrendingUp,
+  TrendingDown,
+  Client: Building2,
+  User,
   Mail,
   Phone,
-  MessageCircle,
-  
-  // Time
   Calendar,
-  Clock,
-  
-  // Organization
-  Archive,
-  Bookmark,
-  Share: Share2,
-  External: ExternalLink,
-  
-  // Engagement
+  Contract: FileSignature,
+  Document: FileText,
+  Folder: FolderOpen,
+  Briefcase,
+  BarChart: BarChart3,
+  PieChart,
+  Image,
+  Video,
+  Hash,
   Heart,
-  ThumbsUp,
-  Play,
-  Pause,
-  
-  // User
-  User,
-  Users,
-  LogOut,
-  Building: Building2,
-  
-  // Theme
-  Palette,
+  Comment: MessageCircle,
+  Share: Share2,
+  Eye,
+  Bookmark,
+  ArrowUp: ArrowUpRight,
+  ArrowDown: ArrowDownRight,
   Moon,
   Sun,
+  Zap,
+  Target,
+  Award,
+  Star,
+  Package,
+  Globe,
+  Lock,
+  Unlock
 };
 
-export type IconName = keyof typeof Icons;
+export default Icons;

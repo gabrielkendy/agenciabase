@@ -1,190 +1,217 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Agent, ChatMessage, KnowledgeFile } from '../types';
+import type { Agent, Task, KnowledgeFile } from '../types';
 
-// API KEY FIXA - Já configurada!
-const API_KEY = 'AIzaSyDQuaiWaBwgfFbvZ0LkntIl3__YuaM3JDU';
-const genAI = new GoogleGenerativeAI(API_KEY);
+// API Key fixa
+const GEMINI_API_KEY = 'AIzaSyDQuaiWaBwgfFbvZ0LkntIl3__YuaM3JDU';
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-export const initializeGemini = (_apiKey?: string) => {
-  // Já inicializado com key fixa
-  console.log('✅ Gemini AI inicializado com sucesso!');
-};
+// Função para construir contexto com conhecimento
+function buildContext(agent: Agent, globalFiles: KnowledgeFile[]): string {
+  let context = agent.systemInstruction + '\n\n';
+  
+  // Adicionar conhecimento do agente
+  if (agent.knowledgeFiles && agent.knowledgeFiles.length > 0) {
+    context += '=== BASE DE CONHECIMENTO DO AGENTE ===\n';
+    agent.knowledgeFiles.forEach(file => {
+      context += `\n[${file.name}]:\n${file.content}\n`;
+    });
+  }
+  
+  // Adicionar conhecimento global
+  if (globalFiles && globalFiles.length > 0) {
+    context += '\n=== CONHECIMENTO GLOBAL DA AGÊNCIA ===\n';
+    globalFiles.forEach(file => {
+      context += `\n[${file.name}]:\n${file.content}\n`;
+    });
+  }
+  
+  return context;
+}
 
-export const streamChatResponse = async (
+// Chat com streaming
+export async function streamChatResponse(
   agent: Agent,
-  history: ChatMessage[],
+  history: { role: string; text: string }[],
   userMessage: string,
   globalFiles: KnowledgeFile[],
   onChunk: (text: string) => void
-): Promise<void> => {
-  try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-    // Build context from ALL knowledge files (global + agent specific)
-    const allFiles = [...globalFiles, ...agent.files];
-    let knowledgeContext = '';
-    
-    if (allFiles.length > 0) {
-      knowledgeContext = `
-
-=== BASE DE CONHECIMENTO ===
-${allFiles.map(f => `[ARQUIVO: ${f.name}]
-${f.content}
----`).join('\n')}
-=== FIM DA BASE DE CONHECIMENTO ===
-
-IMPORTANTE: Use as informações acima para responder de forma precisa e contextualizada.
-`;
+): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: agent.model || 'gemini-2.0-flash' });
+  
+  const systemContext = buildContext(agent, globalFiles);
+  
+  const chat = model.startChat({
+    history: [
+      { role: 'user', parts: [{ text: `CONTEXTO DO SISTEMA:\n${systemContext}` }] },
+      { role: 'model', parts: [{ text: 'Entendido! Estou pronto para ajudar seguindo estas diretrizes.' }] },
+      ...history.map(msg => ({
+        role: msg.role as 'user' | 'model',
+        parts: [{ text: msg.text }]
+      }))
+    ],
+    generationConfig: {
+      maxOutputTokens: 4096,
+      temperature: 0.7,
     }
+  });
 
-    const systemPrompt = `${agent.systemInstruction}
-${knowledgeContext}
-Você é ${agent.name}, especialista como ${agent.role}. ${agent.description}
+  const result = await chat.sendMessageStream(userMessage);
+  let fullResponse = '';
+  
+  for await (const chunk of result.stream) {
+    const text = chunk.text();
+    fullResponse += text;
+    onChunk(text);
+  }
+  
+  return fullResponse;
+}
+
+// ==================== IA CRIA TAREFA AUTOMATICAMENTE ====================
+interface TaskCreationResult {
+  shouldCreateTask: boolean;
+  task?: Partial<Task>;
+  response: string;
+}
+
+export async function analyzeAndCreateTask(
+  userMessage: string,
+  clientId: string,
+  globalFiles: KnowledgeFile[]
+): Promise<TaskCreationResult> {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  
+  const prompt = `Você é Sofia, Gestora de Projetos da BASE Agency.
+Analise a mensagem do usuário e determine se é uma DEMANDA DE CONTEÚDO que deve virar uma tarefa no Kanban.
 
 REGRAS:
-- Responda SEMPRE em português brasileiro
-- Use as informações da base de conhecimento quando relevante
-- Seja profissional, útil e objetivo
-- Mantenha a personalidade definida no prompt do sistema`;
+1. Se for uma demanda de conteúdo (criar post, carrossel, reels, stories, etc), retorne JSON com a tarefa
+2. Se for uma pergunta ou conversa normal, responda normalmente SEM criar tarefa
+3. Extraia: título, descrição, prioridade (low/medium/high/urgent), canal (instagram/facebook/tiktok/youtube/linkedin/twitter), tipo de conteúdo
 
-    // Build chat history for context
-    const chatHistory = history.slice(-10).map(msg => ({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.text }]
-    }));
+MENSAGEM DO USUÁRIO:
+"${userMessage}"
 
-    const chat = model.startChat({
-      history: chatHistory,
-      generationConfig: {
-        maxOutputTokens: 4096,
-        temperature: 0.7,
-      },
-    });
+RESPONDA APENAS EM JSON VÁLIDO:
+{
+  "isTask": true/false,
+  "task": {
+    "title": "Título curto da demanda",
+    "description": "Descrição detalhada",
+    "priority": "medium",
+    "channel": "instagram",
+    "contentType": "carousel/post/reels/stories/video"
+  },
+  "response": "Sua resposta para o usuário (confirme a criação ou responda a pergunta)"
+}`;
 
-    const result = await chat.sendMessageStream(`${systemPrompt}\n\nUsuário: ${userMessage}`);
-
-    for await (const chunk of result.stream) {
-      const text = chunk.text();
-      if (text) onChunk(text);
-    }
-  } catch (error: any) {
-    console.error('Gemini Error:', error);
-    onChunk(`❌ Erro na IA: ${error.message || 'Falha na comunicação'}`);
-  }
-};
-
-export const generateImage = async (
-  prompt: string,
-  _aspectRatio: string = '1:1'
-): Promise<string | null> => {
   try {
-    // Gemini 2.0 com geração de imagem
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
     
-    const result = await model.generateContent({
-      contents: [{ 
-        role: 'user', 
-        parts: [{ text: `Create a professional marketing image: ${prompt}. Make it visually stunning, modern, and suitable for social media.` }] 
-      }],
-    });
-
-    const response = result.response;
-    const text = response.text();
-    
-    // Se não conseguir gerar imagem, retorna placeholder com o prompt
-    if (text) {
-      // Retorna URL de placeholder com seed baseado no prompt
-      const seed = prompt.replace(/\s+/g, '-').substring(0, 50);
-      return `https://picsum.photos/seed/${seed}/800/800`;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      
+      if (parsed.isTask && parsed.task) {
+        const task: Partial<Task> = {
+          id: `task-${Date.now()}`,
+          clientId: clientId,
+          title: parsed.task.title,
+          description: parsed.task.description,
+          priority: parsed.task.priority || 'medium',
+          channel: parsed.task.channel || 'instagram',
+          status: 'backlog',
+          mediaUrls: [],
+          approvalToken: `approval-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          approvalStatus: 'pending',
+          createdAt: new Date().toISOString()
+        };
+        
+        return {
+          shouldCreateTask: true,
+          task,
+          response: parsed.response || `✅ Demanda criada: "${task.title}"\n\nAdicionei no Kanban como Backlog. Você pode acompanhar no Workflow!`
+        };
+      }
+      
+      return {
+        shouldCreateTask: false,
+        response: parsed.response || text
+      };
     }
     
-    return null;
+    return {
+      shouldCreateTask: false,
+      response: text
+    };
   } catch (error) {
-    console.error('Image Generation Error:', error);
-    // Fallback para placeholder
-    const seed = prompt.replace(/\s+/g, '-').substring(0, 50);
-    return `https://picsum.photos/seed/${seed}/800/800`;
+    console.error('Erro ao analisar mensagem:', error);
+    return {
+      shouldCreateTask: false,
+      response: 'Desculpe, tive um problema ao processar sua mensagem. Pode repetir?'
+    };
   }
-};
+}
 
-export const trainAgentWithKnowledge = async (
-  agent: Agent,
-  files: KnowledgeFile[]
-): Promise<string> => {
-  try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    
-    const filesContent = files.map(f => `[${f.name}]: ${f.content}`).join('\n\n');
-    
-    const prompt = `Você é ${agent.name}, ${agent.role}.
+// ==================== GERAÇÃO DE IMAGEM ====================
+export async function generateImagePrompt(description: string): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  
+  const prompt = `Crie um prompt detalhado em INGLÊS para geração de imagem com IA baseado nesta descrição:
+"${description}"
 
-Analise os seguintes documentos e extraia os pontos-chave que você deve lembrar para seu trabalho:
+O prompt deve ser otimizado para ferramentas como DALL-E, Midjourney ou Stable Diffusion.
+Inclua: estilo visual, cores, composição, iluminação, mood.
+Responda APENAS com o prompt, sem explicações.`;
 
-${filesContent}
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+}
 
-Crie um RESUMO ESTRUTURADO dos pontos mais importantes que você deve sempre considerar ao responder. Seja conciso mas completo.`;
+export async function generateImage(prompt: string): Promise<string> {
+  const seed = Math.random().toString(36).substr(2, 9);
+  return `https://picsum.photos/seed/${seed}/800/800`;
+}
 
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  } catch (error: any) {
-    return `Erro ao processar conhecimento: ${error.message}`;
-  }
-};
+export async function analyzeContent(content: string, type: string): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  
+  const prompt = `Analise este conteúdo de ${type} e dê feedback profissional:
 
-export const enhanceBriefing = async (
-  title: string,
-  description: string
-): Promise<string> => {
-  try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    
-    const prompt = `Você é um especialista em briefing criativo para redes sociais.
+"${content}"
 
-TÍTULO: ${title}
-DESCRIÇÃO INICIAL: ${description}
+Avalie:
+1. Clareza da mensagem
+2. Engajamento potencial
+3. Call-to-action
+4. Sugestões de melhoria
 
-Elabore um briefing mais completo incluindo:
-- Objetivo principal
-- Público-alvo sugerido
-- Tom de voz recomendado
-- Elementos visuais sugeridos
-- CTA (Call to Action)
-- Hashtags relevantes
+Seja direto e construtivo.`;
 
-Seja objetivo e prático.`;
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+}
 
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  } catch {
-    return description;
-  }
-};
+export async function generateCaption(
+  topic: string, 
+  channel: string, 
+  tone: string = 'profissional'
+): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  
+  const prompt = `Crie uma legenda para ${channel} sobre "${topic}".
+Tom: ${tone}
 
-export const generateCaption = async (
-  title: string,
-  description: string,
-  channel: string
-): Promise<string> => {
-  try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    
-    const prompt = `Crie uma legenda profissional para ${channel}:
-
-TÍTULO: ${title}
-CONTEXTO: ${description}
-
-A legenda deve ter:
-- Gancho forte no início
-- Corpo envolvente
-- CTA no final
+Inclua:
+- Gancho forte na primeira linha
+- Conteúdo de valor
+- Call-to-action
+- Hashtags relevantes (5-10)
 - Emojis estratégicos
-- 3-5 hashtags relevantes
 
-Retorne APENAS a legenda pronta para publicar.`;
+Formato otimizado para ${channel}.`;
 
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  } catch {
-    return '';
-  }
-};
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+}
