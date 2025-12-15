@@ -4,11 +4,17 @@ services:
     name: agenciabase
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build && cd server && npm install
+    region: oregon
+    buildCommand: |
+      npm install
+      npm run build
+      cd server && npm install
     startCommand: cd server && node server.js
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 20
       - key: PORT
         value: 10000
     healthCheckPath: /api/health
