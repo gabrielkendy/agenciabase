@@ -3,73 +3,96 @@ import { Icons } from './Icons';
 import { useStore } from '../store';
 import clsx from 'clsx';
 
-const NAV_ITEMS = [
-  { path: '/', label: 'Dashboard', icon: Icons.Dashboard },
-  { path: '/chat', label: 'Chat IA', icon: Icons.Chat },
-  { path: '/workflow', label: 'Workflow', icon: Icons.Kanban },
-  { path: '/calendar', label: 'Calendário', icon: Icons.CalendarDays },
-  { path: '/clients', label: 'Clientes', icon: Icons.Clients },
-  { path: '/agents', label: 'Agentes IA', icon: Icons.Agents },
-  { path: '/settings', label: 'Configurações', icon: Icons.Settings },
+const navItems = [
+  { path: '/', icon: Icons.Dashboard, label: 'Dashboard' },
+  { path: '/chat', icon: Icons.Chat, label: 'Chat IA', badge: '🤖' },
+  { path: '/workflow', icon: Icons.Kanban, label: 'Workflow' },
+  { path: '/calendar', icon: Icons.Calendar, label: 'Calendário' },
+  { path: '/clients', icon: Icons.Users, label: 'Clientes' },
+  { path: '/agents', icon: Icons.Bot, label: 'Agentes' },
+  { path: '/settings', icon: Icons.Settings, label: 'Configurações' },
 ];
 
-export const Sidebar: React.FC = () => {
-  const { sidebarCollapsed, setSidebarCollapsed, clients, selectedClientId, setSelectedClientId } = useStore();
+export const Sidebar = () => {
+  const { notifications, demands, clients } = useStore();
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  const pendingDemands = demands.filter((d) => d.status === 'aprovacao_cliente').length;
 
   return (
-    <aside className={clsx(
-      'h-screen bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-300',
-      sidebarCollapsed ? 'w-16' : 'w-64'
-    )}>
-      <div className="h-16 border-b border-gray-800 flex items-center justify-between px-4">
-        {!sidebarCollapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-pink-500 rounded-lg flex items-center justify-center">
-              <Icons.Sparkles size={18} className="text-white" />
-            </div>
-            <div>
-              <span className="font-bold text-white">BASE</span>
-              <span className="text-orange-400 ml-1">Agency</span>
-              <p className="text-[10px] text-gray-500">SaaS v5.0</p>
-            </div>
+    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
+      {/* Logo */}
+      <div className="p-6 border-b border-gray-800">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-yellow-500 rounded-xl flex items-center justify-center">
+            <Icons.Zap className="text-white" size={24} />
           </div>
-        )}
-        <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white">
-          {sidebarCollapsed ? <Icons.ChevronRight size={18} /> : <Icons.ChevronLeft size={18} />}
-        </button>
+          <div>
+            <h1 className="text-xl font-bold text-white">BASE</h1>
+            <p className="text-xs text-gray-500">Agency SaaS</p>
+          </div>
+        </div>
       </div>
 
-      {!sidebarCollapsed && (
-        <div className="p-3 border-b border-gray-800">
-          <label className="text-[10px] uppercase text-gray-500 font-medium mb-1 block">Filtrar Cliente</label>
-          <select value={selectedClientId || ''} onChange={(e) => setSelectedClientId(e.target.value || null)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none">
-            <option value="">Todos os Clientes</option>
-            {clients.map(client => (<option key={client.id} value={client.id}>{client.name}</option>))}
-          </select>
+      {/* Quick Stats */}
+      <div className="p-4 border-b border-gray-800">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-gray-800/50 rounded-xl p-3 text-center">
+            <p className="text-2xl font-bold text-white">{clients.length}</p>
+            <p className="text-xs text-gray-500">Clientes</p>
+          </div>
+          <div className="bg-gray-800/50 rounded-xl p-3 text-center">
+            <p className="text-2xl font-bold text-orange-500">{demands.length}</p>
+            <p className="text-xs text-gray-500">Demandas</p>
+          </div>
         </div>
-      )}
+      </div>
 
-      <nav className="flex-1 p-2 overflow-y-auto">
-        {NAV_ITEMS.map(item => (
-          <NavLink key={item.path} to={item.path} className={({ isActive }) => clsx(
-            'flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors',
-            isActive ? 'bg-orange-500/10 text-orange-400' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-          )}>
+      {/* Navigation */}
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) => clsx(
+              'flex items-center gap-3 px-4 py-3 rounded-xl transition-all group',
+              isActive ? 'bg-orange-500/20 text-orange-500' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+            )}
+          >
             <item.icon size={20} />
-            {!sidebarCollapsed && <span className="font-medium">{item.label}</span>}
+            <span className="flex-1 font-medium">{item.label}</span>
+            {item.label === 'Workflow' && pendingDemands > 0 && (
+              <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-500 rounded-full text-xs">{pendingDemands}</span>
+            )}
+            {item.badge && <span className="text-sm">{item.badge}</span>}
           </NavLink>
         ))}
       </nav>
 
-      <div className="p-3 border-t border-gray-800">
-        <div className={clsx('flex items-center gap-3', sidebarCollapsed && 'justify-center')}>
-          <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold">U</div>
-          {!sidebarCollapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">Usuário Pro</p>
-              <p className="text-xs text-gray-500 truncate">Admin</p>
+
+      {/* Notifications */}
+      {unreadCount > 0 && (
+        <div className="px-4 py-3 border-t border-gray-800">
+          <div className="flex items-center gap-3 px-4 py-3 bg-orange-500/10 border border-orange-500/30 rounded-xl">
+            <Icons.Bell className="text-orange-500" size={20} />
+            <div className="flex-1">
+              <p className="text-sm text-white font-medium">{unreadCount} notificação(ões)</p>
+              <p className="text-xs text-gray-500">Clique para ver</p>
             </div>
-          )}
+          </div>
+        </div>
+      )}
+
+      {/* User */}
+      <div className="p-4 border-t border-gray-800">
+        <div className="flex items-center gap-3 px-4 py-3 bg-gray-800/50 rounded-xl">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">A</div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-white font-medium truncate">Admin</p>
+            <p className="text-xs text-gray-500 truncate">admin@base.ai</p>
+          </div>
+          <button className="p-2 hover:bg-gray-700 rounded-lg transition">
+            <Icons.LogOut className="text-gray-400" size={18} />
+          </button>
         </div>
       </div>
     </aside>

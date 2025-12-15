@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { Icons } from '../components/Icons';
 import { useStore } from '../store';
-import { testAIConnection } from '../services/ai';
-import { v4 as uuid } from 'uuid';
+import toast from 'react-hot-toast';
 
 export const SettingsPage: React.FC = () => {
-  const { apiConfig, setApiConfig, addNotification } = useStore();
+  const { apiConfig, setApiConfig } = useStore();
   const [showOpenAI, setShowOpenAI] = useState(false);
   const [showGemini, setShowGemini] = useState(false);
   const [testingOpenAI, setTestingOpenAI] = useState(false);
@@ -16,17 +15,25 @@ export const SettingsPage: React.FC = () => {
   const handleTestOpenAI = async () => {
     if (!apiConfig.openai_key) return;
     setTestingOpenAI(true); setOpenaiStatus('idle');
-    const success = await testAIConnection('openai', apiConfig.openai_key);
-    setOpenaiStatus(success ? 'success' : 'error'); setTestingOpenAI(false);
-    addNotification({ id: uuid(), title: success ? '✅ OpenAI OK' : '❌ Erro OpenAI', message: success ? 'API válida!' : 'Verifique a key', type: success ? 'success' : 'error', read: false, timestamp: new Date().toISOString() });
+    try {
+      const response = await fetch('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${apiConfig.openai_key}` } });
+      const success = response.ok;
+      setOpenaiStatus(success ? 'success' : 'error');
+      toast[success ? 'success' : 'error'](success ? '✅ OpenAI OK!' : '❌ Erro OpenAI');
+    } catch { setOpenaiStatus('error'); toast.error('❌ Erro OpenAI'); }
+    setTestingOpenAI(false);
   };
 
   const handleTestGemini = async () => {
     if (!apiConfig.gemini_key) return;
     setTestingGemini(true); setGeminiStatus('idle');
-    const success = await testAIConnection('gemini', apiConfig.gemini_key);
-    setGeminiStatus(success ? 'success' : 'error'); setTestingGemini(false);
-    addNotification({ id: uuid(), title: success ? '✅ Gemini OK' : '❌ Erro Gemini', message: success ? 'API válida!' : 'Verifique a key', type: success ? 'success' : 'error', read: false, timestamp: new Date().toISOString() });
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiConfig.gemini_key}`);
+      const success = response.ok;
+      setGeminiStatus(success ? 'success' : 'error');
+      toast[success ? 'success' : 'error'](success ? '✅ Gemini OK!' : '❌ Erro Gemini');
+    } catch { setGeminiStatus('error'); toast.error('❌ Erro Gemini'); }
+    setTestingGemini(false);
   };
 
   return (
