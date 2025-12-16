@@ -1,21 +1,14 @@
-# render.yaml - Deploy completo no Render.com
 services:
   - type: web
     name: agenciabase
     runtime: node
     plan: free
     region: oregon
-    buildCommand: |
-      npm install
-      npm run build
-      cd server && npm install
-    startCommand: cd server && node server.js
+    buildCommand: npm install && npm run build
+    startCommand: node server.cjs
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
         value: 20
-      - key: PORT
-        value: 10000
-    healthCheckPath: /api/health
     autoDeploy: true
