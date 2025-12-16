@@ -1,94 +1,129 @@
-import React from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { Icons } from './Icons';
 import { useStore } from '../store';
 import clsx from 'clsx';
+import toast from 'react-hot-toast';
 
 interface SidebarProps {
-  activeView: string;
-  onViewChange: (view: string) => void;
+  onClose?: () => void;
+  isMobile?: boolean;
 }
 
-const MENU_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: Icons.Dashboard },
-  { id: 'chat', label: 'Chat IA', icon: Icons.Chat },
-  { id: 'workflow', label: 'Workflow', icon: Icons.Kanban },
-  { id: 'clients', label: 'Clientes', icon: Icons.Client },
-  { id: 'contracts', label: 'Contratos', icon: Icons.Contract },
-  { id: 'financial', label: 'Financeiro', icon: Icons.Money },
-  { id: 'content', label: 'Conteúdos', icon: Icons.Folder },
-  { id: 'agents', label: 'Agentes IA', icon: Icons.Agents },
-  { id: 'knowledge', label: 'Conhecimento', icon: Icons.Knowledge },
-  { id: 'team', label: 'Equipe', icon: Icons.Users },
-  { id: 'settings', label: 'Configurações', icon: Icons.Settings },
+const navItems = [
+  { path: '/', icon: Icons.Dashboard, label: 'Dashboard' },
+  { path: '/chat', icon: Icons.Chat, label: 'Chat IA', badge: '🤖' },
+  { path: '/workflow', icon: Icons.Kanban, label: 'Workflow' },
+  { path: '/calendar', icon: Icons.Calendar, label: 'Calendário' },
+  { path: '/clients', icon: Icons.Users, label: 'Clientes' },
+  { path: '/agents', icon: Icons.Bot, label: 'Agentes' },
+  { path: '/settings', icon: Icons.Settings, label: 'Config' },
+  { path: '/admin', icon: Icons.Shield, label: 'Admin', adminOnly: true },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange }) => {
-  const { user, clients, selectedClientId, setSelectedClientId } = useStore();
-  
+export const Sidebar = ({ onClose, isMobile }: SidebarProps) => {
+  const navigate = useNavigate();
+  const { notifications, demands, clients, currentUser, logout } = useStore();
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  const pendingDemands = demands.filter((d) => d.status === 'aprovacao_cliente').length;
+
+  const handleLogout = () => {
+    logout();
+    toast.success('Logout realizado!');
+    navigate('/login');
+  };
+
+  // Filtrar itens de admin se usuário não for admin
+  const filteredNavItems = navItems.filter(item => {
+    if (item.adminOnly && currentUser?.role !== 'admin') {
+      return false;
+    }
+    return true;
+  });
+
   return (
-    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
-      <div className="h-16 flex items-center px-4 border-b border-gray-800">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
-            <Icons.Zap size={24} className="text-white" />
+    <aside className="w-64 lg:w-64 h-full bg-gray-900 border-r border-gray-800 flex flex-col">
+      {/* Logo */}
+      <div className="p-4 lg:p-6 border-b border-gray-800 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-yellow-500 rounded-xl flex items-center justify-center">
+            <Icons.Zap className="text-white" size={20} />
           </div>
           <div>
-            <h1 className="font-bold text-white text-lg">BASE Agency</h1>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider">SaaS v4.0</p>
+            <h1 className="text-lg lg:text-xl font-bold text-white">BASE</h1>
+            <p className="text-xs text-gray-500">Agency SaaS</p>
+          </div>
+        </div>
+        {isMobile && (
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-white rounded-lg">
+            <Icons.X size={20} />
+          </button>
+        )}
+      </div>
+
+      {/* Quick Stats */}
+      <div className="p-3 lg:p-4 border-b border-gray-800">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-gray-800/50 rounded-xl p-2 lg:p-3 text-center">
+            <p className="text-xl lg:text-2xl font-bold text-white">{clients.length}</p>
+            <p className="text-xs text-gray-500">Clientes</p>
+          </div>
+          <div className="bg-gray-800/50 rounded-xl p-2 lg:p-3 text-center">
+            <p className="text-xl lg:text-2xl font-bold text-orange-500">{demands.length}</p>
+            <p className="text-xs text-gray-500">Demandas</p>
           </div>
         </div>
       </div>
-      
-      <div className="p-3 border-b border-gray-800">
-        <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1.5">Filtrar Cliente</label>
-        <select
-          value={selectedClientId || ''}
-          onChange={(e) => setSelectedClientId(e.target.value || null)}
-          className="w-full bg-gray-800 border border-gray-700 text-sm text-white rounded-lg px-3 py-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
-        >
-          <option value="">Todos os Clientes</option>
-          {clients.map(client => (
-            <option key={client.id} value={client.id}>{client.name}</option>
-          ))}
-        </select>
-      </div>
-      
-      <nav className="flex-1 overflow-y-auto py-3">
-        <ul className="space-y-1 px-2">
-          {MENU_ITEMS.map(item => {
-            const Icon = item.icon;
-            const isActive = activeView === item.id;
-            return (
-              <li key={item.id}>
-                <button
-                  onClick={() => onViewChange(item.id)}
-                  className={clsx(
-                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                    isActive 
-                      ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' 
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                  )}
-                >
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+
+      {/* Navigation */}
+      <nav className="flex-1 p-3 lg:p-4 space-y-1 overflow-y-auto">
+        {filteredNavItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            onClick={onClose}
+            className={({ isActive }) => clsx(
+              'flex items-center gap-3 px-3 lg:px-4 py-2.5 lg:py-3 rounded-xl transition-all group',
+              isActive ? 'bg-orange-500/20 text-orange-500' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+            )}
+          >
+            <item.icon size={20} />
+            <span className="flex-1 font-medium text-sm lg:text-base">{item.label}</span>
+            {item.label === 'Workflow' && pendingDemands > 0 && (
+              <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-500 rounded-full text-xs">{pendingDemands}</span>
+            )}
+            {item.badge && <span className="text-sm">{item.badge}</span>}
+          </NavLink>
+        ))}
       </nav>
-      
-      <div className="p-3 border-t border-gray-800">
-        <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-800/50">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-pink-500 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">{user.name.charAt(0)}</span>
+
+      {/* Notifications */}
+      {unreadCount > 0 && (
+        <div className="px-3 lg:px-4 py-2 lg:py-3 border-t border-gray-800">
+          <div className="flex items-center gap-2 lg:gap-3 px-3 lg:px-4 py-2 lg:py-3 bg-orange-500/10 border border-orange-500/30 rounded-xl">
+            <Icons.Bell className="text-orange-500" size={18} />
+            <div className="flex-1">
+              <p className="text-xs lg:text-sm text-white font-medium">{unreadCount} notificação(ões)</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User */}
+      <div className="p-3 lg:p-4 border-t border-gray-800">
+        <div className="flex items-center gap-2 lg:gap-3 px-3 lg:px-4 py-2 lg:py-3 bg-gray-800/50 rounded-xl">
+          <div className="w-8 h-8 lg:w-10 lg:h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+            {currentUser?.name?.charAt(0).toUpperCase() || 'U'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">{user.name}</p>
-            <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+            <p className="text-sm text-white font-medium truncate">{currentUser?.name || 'Usuário'}</p>
+            <p className="text-xs text-gray-500 truncate">{currentUser?.email || ''}</p>
           </div>
-          <button className="p-1.5 text-gray-500 hover:text-white rounded-lg hover:bg-gray-700">
-            <Icons.LogOut size={16} />
+          <button 
+            onClick={handleLogout}
+            className="p-1.5 lg:p-2 hover:bg-gray-700 rounded-lg transition"
+            title="Sair"
+          >
+            <Icons.LogOut className="text-gray-400 hover:text-red-400" size={16} />
           </button>
         </div>
       </div>
