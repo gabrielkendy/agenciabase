@@ -123,7 +123,6 @@ export const LoginPage = () => {
           
           // 3. Verificar se tem senha cadastrada (usuário sem ser membro)
           if (verifyLocalPassword(form.email, form.password)) {
-            const passwords = getLocalPasswords();
             const userName = form.email.split('@')[0];
             setCurrentUser({
               id: form.email,
