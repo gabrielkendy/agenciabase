@@ -5,7 +5,7 @@ import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import toast from 'react-hot-toast';
 
-type AuthMode = 'login' | 'register' | 'forgot';
+type AuthMode = 'login' | 'register';
 
 // ============================================
 // SISTEMA DE USUÁRIOS LOCAL (SEM SUPABASE)
@@ -67,17 +67,6 @@ const createUser = (name: string, email: string, password: string, role: 'admin'
   users.push(newUser);
   saveLocalUsers(users);
   return newUser;
-};
-
-const updatePassword = (email: string, newPassword: string): boolean => {
-  const users = getLocalUsers();
-  const index = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase().trim());
-  if (index >= 0) {
-    users[index].password = newPassword;
-    saveLocalUsers(users);
-    return true;
-  }
-  return false;
 };
 
 // ============================================
@@ -254,54 +243,6 @@ export const LoginPage = () => {
     }
   };
 
-  const handleForgotPassword = async () => {
-    const email = form.email.toLowerCase().trim();
-
-    if (!email) {
-      toast.error('Digite seu email');
-      return;
-    }
-
-    // Modo local
-    if (!isSupabaseConfigured()) {
-      const user = findUserByEmail(email);
-      
-      if (!user) {
-        toast.error('Email não encontrado. Crie uma conta.');
-        return;
-      }
-
-      // Gerar senha temporária
-      const tempPassword = Math.random().toString(36).slice(-8);
-      updatePassword(email, tempPassword);
-
-      toast.success(`Nova senha: ${tempPassword}`, { duration: 15000 });
-      toast('Anote a senha e faça login!', { icon: '📝', duration: 8000 });
-      
-      setForm({ ...form, password: tempPassword });
-      setMode('login');
-      return;
-    }
-
-    // Supabase
-    if (!supabase) {
-      toast.error('Erro de configuração');
-      return;
-    }
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-
-    toast.success('Email de recuperação enviado!');
-    setMode('login');
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -311,8 +252,6 @@ export const LoginPage = () => {
         await handleLogin();
       } else if (mode === 'register') {
         await handleRegister();
-      } else if (mode === 'forgot') {
-        await handleForgotPassword();
       }
     } catch (error: any) {
       console.error('Auth error:', error);
@@ -348,7 +287,6 @@ export const LoginPage = () => {
           <h2 className="text-xl font-semibold text-white mb-6 text-center">
             {mode === 'login' && 'Entrar na sua conta'}
             {mode === 'register' && 'Criar nova conta'}
-            {mode === 'forgot' && 'Recuperar senha'}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -386,29 +324,27 @@ export const LoginPage = () => {
             </div>
 
             {/* Senha */}
-            {mode !== 'forgot' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Senha</label>
-                <div className="relative">
-                  <Icons.Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    placeholder="••••••••"
-                    required
-                    className="w-full pl-11 pr-12 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition"
-                  >
-                    {showPassword ? <Icons.EyeOff size={20} /> : <Icons.Eye size={20} />}
-                  </button>
-                </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Senha</label>
+              <div className="relative">
+                <Icons.Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  placeholder="••••••••"
+                  required
+                  className="w-full pl-11 pr-12 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition"
+                >
+                  {showPassword ? <Icons.EyeOff size={20} /> : <Icons.Eye size={20} />}
+                </button>
               </div>
-            )}
+            </div>
 
             {/* Confirmar Senha (só cadastro) */}
             {mode === 'register' && (
@@ -428,19 +364,6 @@ export const LoginPage = () => {
               </div>
             )}
 
-            {/* Esqueci senha */}
-            {mode === 'login' && (
-              <div className="text-right">
-                <button
-                  type="button"
-                  onClick={() => setMode('forgot')}
-                  className="text-sm text-orange-500 hover:text-orange-400 transition"
-                >
-                  Esqueci minha senha
-                </button>
-              </div>
-            )}
-
             {/* Submit */}
             <button
               type="submit"
@@ -453,7 +376,6 @@ export const LoginPage = () => {
                 <>
                   {mode === 'login' && <><Icons.LogIn size={20} /> Entrar</>}
                   {mode === 'register' && <><Icons.UserPlus size={20} /> Criar conta</>}
-                  {mode === 'forgot' && <><Icons.Mail size={20} /> Recuperar</>}
                 </>
               )}
             </button>
@@ -483,7 +405,7 @@ export const LoginPage = () => {
                 </button>
               </p>
             )}
-            {(mode === 'register' || mode === 'forgot') && (
+            {mode === 'register' && (
               <p className="text-gray-400">
                 Já tem conta?{' '}
                 <button
