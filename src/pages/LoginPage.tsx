@@ -7,9 +7,32 @@ import toast from 'react-hot-toast';
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
+// Armazenar senhas localmente (modo sem Supabase)
+const LOCAL_PASSWORDS_KEY = 'base_agency_passwords';
+
+const getLocalPasswords = (): Record<string, string> => {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_PASSWORDS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const setLocalPassword = (email: string, password: string) => {
+  const passwords = getLocalPasswords();
+  passwords[email.toLowerCase()] = password;
+  localStorage.setItem(LOCAL_PASSWORDS_KEY, JSON.stringify(passwords));
+};
+
+const verifyLocalPassword = (email: string, password: string): boolean => {
+  const passwords = getLocalPasswords();
+  const storedPassword = passwords[email.toLowerCase()];
+  return storedPassword === password;
+};
+
 export const LoginPage = () => {
   const navigate = useNavigate();
-  const { setCurrentUser, currentUser, teamMembers } = useStore();
+  const { setCurrentUser, currentUser, teamMembers, addTeamMember } = useStore();
   const [mode, setMode] = useState<AuthMode>('login');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -57,11 +80,13 @@ export const LoginPage = () => {
     setLoading(true);
 
     try {
-      // Se Supabase não configurado, usar login local
+      // ===== MODO LOCAL (sem Supabase) =====
       if (!isSupabaseConfigured()) {
+        
+        // ----- LOGIN -----
         if (mode === 'login') {
-          // Verificar admin padrão
-          if (form.email === 'admin@base.ai' && form.password === 'admin123') {
+          // 1. Admin padrão
+          if (form.email.toLowerCase() === 'admin@base.ai' && form.password === 'admin123') {
             setCurrentUser({
               id: '1',
               email: 'admin@base.ai',
@@ -70,38 +95,108 @@ export const LoginPage = () => {
             });
             toast.success('Bem-vindo, Admin!');
             navigate('/');
+            setLoading(false);
             return;
           }
           
-          // Verificar na lista de membros da equipe
+          // 2. Verificar membro da equipe
           const member = teamMembers.find(m => 
             m.email.toLowerCase() === form.email.toLowerCase()
           );
           
           if (member) {
-            // Para membros, a senha padrão é o email antes do @
-            const defaultPassword = form.email.split('@')[0];
-            if (form.password === defaultPassword || form.password === 'senha123') {
+            // Verificar senha armazenada localmente
+            if (verifyLocalPassword(form.email, form.password)) {
               setCurrentUser({
                 id: member.id,
                 email: member.email,
                 name: member.name,
-                role: member.role === 'manager' ? 'admin' : member.role,
+                role: member.role === 'manager' ? 'admin' : 
+                      member.role === 'both' ? 'editor' : member.role,
               });
               toast.success(`Bem-vindo, ${member.name}!`);
               navigate('/');
+              setLoading(false);
               return;
             }
           }
           
+          // 3. Verificar se tem senha cadastrada (usuário sem ser membro)
+          if (verifyLocalPassword(form.email, form.password)) {
+            const passwords = getLocalPasswords();
+            const userName = form.email.split('@')[0];
+            setCurrentUser({
+              id: form.email,
+              email: form.email,
+              name: userName.charAt(0).toUpperCase() + userName.slice(1),
+              role: 'editor',
+            });
+            toast.success(`Bem-vindo!`);
+            navigate('/');
+            setLoading(false);
+            return;
+          }
+          
           toast.error('Email ou senha incorretos');
-        } else if (mode === 'register') {
-          toast.error('Configure o Supabase para permitir novos cadastros');
-        } else if (mode === 'forgot') {
-          toast.error('Configure o Supabase para recuperação de senha');
+          setLoading(false);
+          return;
         }
-        setLoading(false);
-        return;
+        
+        // ----- CADASTRO LOCAL -----
+        else if (mode === 'register') {
+          if (!form.name.trim()) {
+            toast.error('Nome é obrigatório');
+            setLoading(false);
+            return;
+          }
+          
+          if (form.password !== form.confirmPassword) {
+            toast.error('Senhas não coincidem');
+            setLoading(false);
+            return;
+          }
+
+          if (form.password.length < 6) {
+            toast.error('Senha deve ter no mínimo 6 caracteres');
+            setLoading(false);
+            return;
+          }
+          
+          // Verificar se email já existe
+          const existingMember = teamMembers.find(m => 
+            m.email.toLowerCase() === form.email.toLowerCase()
+          );
+          
+          if (existingMember || form.email.toLowerCase() === 'admin@base.ai') {
+            toast.error('Este email já está cadastrado');
+            setLoading(false);
+            return;
+          }
+          
+          // Salvar senha localmente
+          setLocalPassword(form.email, form.password);
+          
+          // Adicionar como membro da equipe
+          addTeamMember({
+            name: form.name,
+            email: form.email,
+            role: 'editor',
+            is_active: true,
+          });
+          
+          toast.success('Conta criada com sucesso! Faça login.');
+          setMode('login');
+          setForm({ ...form, name: '', password: '', confirmPassword: '' });
+          setLoading(false);
+          return;
+        }
+        
+        // ----- ESQUECI SENHA -----
+        else if (mode === 'forgot') {
+          toast.error('Entre em contato com o administrador para redefinir sua senha');
+          setLoading(false);
+          return;
+        }
       }
 
       // ===== LOGIN COM SUPABASE =====
@@ -125,7 +220,7 @@ export const LoginPage = () => {
           navigate('/');
         }
       } 
-      // ===== CADASTRO =====
+      // ===== CADASTRO COM SUPABASE =====
       else if (mode === 'register') {
         if (form.password !== form.confirmPassword) {
           toast.error('Senhas não coincidem');
@@ -158,7 +253,7 @@ export const LoginPage = () => {
           setMode('login');
         }
       }
-      // ===== ESQUECI SENHA =====
+      // ===== ESQUECI SENHA COM SUPABASE =====
       else if (mode === 'forgot') {
         if (!supabase) throw new Error('Supabase não configurado');
         const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
@@ -216,7 +311,7 @@ export const LoginPage = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">Nome completo</label>
                 <div className="relative">
-                  <Icons.Users className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <Icons.User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
                   <input
                     type="text"
                     value={form.name}
@@ -313,7 +408,7 @@ export const LoginPage = () => {
                 <Icons.Loader className="animate-spin" size={20} />
               ) : (
                 <>
-                  {mode === 'login' && <><Icons.ArrowRight size={20} /> Entrar</>}
+                  {mode === 'login' && <><Icons.LogIn size={20} /> Entrar</>}
                   {mode === 'register' && <><Icons.UserPlus size={20} /> Criar conta</>}
                   {mode === 'forgot' && <><Icons.Mail size={20} /> Enviar email</>}
                 </>
@@ -365,9 +460,10 @@ export const LoginPage = () => {
 
         {/* Dev Mode Notice */}
         {!isSupabaseConfigured() && (
-          <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
-            <p className="text-yellow-500 text-sm text-center">
-              ⚠️ Modo local • Login: <strong>admin@base.ai</strong> / <strong>admin123</strong>
+          <div className="mt-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-xl">
+            <p className="text-orange-400 text-sm text-center">
+              <Icons.Info className="inline mr-1" size={16} />
+              Admin: admin@base.ai / admin123
             </p>
           </div>
         )}
@@ -375,3 +471,6 @@ export const LoginPage = () => {
     </div>
   );
 };
+
+// Exportar função para uso externo (quando adiciona membro na equipe)
+export { setLocalPassword };
