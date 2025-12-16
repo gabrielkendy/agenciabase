@@ -31,18 +31,22 @@ export const LoginPage = () => {
   // Check for existing Supabase session on mount
   useEffect(() => {
     const checkSession = async () => {
-      if (!isSupabaseConfigured()) return;
+      if (!isSupabaseConfigured() || !supabase) return;
       
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const userData = {
-          id: session.user.id,
-          email: session.user.email || '',
-          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
-          role: session.user.user_metadata?.role || 'editor',
-        };
-        setCurrentUser(userData);
-        navigate('/');
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const userData = {
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
+            role: session.user.user_metadata?.role || 'editor',
+          };
+          setCurrentUser(userData);
+          navigate('/');
+        }
+      } catch (error) {
+        console.log('Session check error:', error);
       }
     };
     checkSession();
@@ -102,6 +106,7 @@ export const LoginPage = () => {
 
       // ===== LOGIN COM SUPABASE =====
       if (mode === 'login') {
+        if (!supabase) throw new Error('Supabase não configurado');
         const { data, error } = await supabase.auth.signInWithPassword({
           email: form.email,
           password: form.password,
@@ -134,6 +139,7 @@ export const LoginPage = () => {
           return;
         }
 
+        if (!supabase) throw new Error('Supabase não configurado');
         const { data, error } = await supabase.auth.signUp({
           email: form.email,
           password: form.password,
@@ -154,6 +160,7 @@ export const LoginPage = () => {
       }
       // ===== ESQUECI SENHA =====
       else if (mode === 'forgot') {
+        if (!supabase) throw new Error('Supabase não configurado');
         const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
           redirectTo: `${window.location.origin}/reset-password`,
         });
