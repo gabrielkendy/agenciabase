@@ -197,12 +197,23 @@ export interface Agent {
   created_at: string;
 }
 
+export interface ChatAttachment {
+  id: string;
+  type: 'image' | 'video' | 'file';
+  name: string;
+  url: string;
+  size: number;
+  mimeType: string;
+}
+
 export interface ChatMessage {
   id: string;
   conversation_id: string;
   agent_id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  attachments?: ChatAttachment[];
+  mentions?: string[]; // IDs dos mencionados
   created_at: string;
 }
 
