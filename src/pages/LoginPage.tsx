@@ -7,32 +7,51 @@ import toast from 'react-hot-toast';
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
-// Armazenar senhas localmente (modo sem Supabase)
-const LOCAL_PASSWORDS_KEY = 'base_agency_passwords';
+// Armazenar usuários localmente (modo sem Supabase)
+const LOCAL_USERS_KEY = 'base_agency_users';
 
-const getLocalPasswords = (): Record<string, string> => {
+interface LocalUser {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  createdAt: string;
+}
+
+const getLocalUsers = (): LocalUser[] => {
   try {
-    return JSON.parse(localStorage.getItem(LOCAL_PASSWORDS_KEY) || '{}');
+    return JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
   } catch {
-    return {};
+    return [];
   }
 };
 
-const setLocalPassword = (email: string, password: string) => {
-  const passwords = getLocalPasswords();
-  passwords[email.toLowerCase()] = password;
-  localStorage.setItem(LOCAL_PASSWORDS_KEY, JSON.stringify(passwords));
+const saveLocalUser = (user: LocalUser) => {
+  const users = getLocalUsers();
+  users.push(user);
+  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
 };
 
-const verifyLocalPassword = (email: string, password: string): boolean => {
-  const passwords = getLocalPasswords();
-  const storedPassword = passwords[email.toLowerCase()];
-  return storedPassword === password;
+const findLocalUser = (email: string): LocalUser | undefined => {
+  const users = getLocalUsers();
+  return users.find(u => u.email.toLowerCase() === email.toLowerCase());
+};
+
+const updateLocalUserPassword = (email: string, newPassword: string) => {
+  const users = getLocalUsers();
+  const userIndex = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+  if (userIndex >= 0) {
+    users[userIndex].password = newPassword;
+    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+    return true;
+  }
+  return false;
 };
 
 export const LoginPage = () => {
   const navigate = useNavigate();
-  const { setCurrentUser, currentUser, teamMembers, addTeamMember } = useStore();
+  const { setCurrentUser, currentUser, teamMembers } = useStore();
   const [mode, setMode] = useState<AuthMode>('login');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -85,55 +104,55 @@ export const LoginPage = () => {
         
         // ----- LOGIN -----
         if (mode === 'login') {
-          // 1. Admin padrão
-          if (form.email.toLowerCase() === 'admin@base.ai' && form.password === 'admin123') {
+          const emailLower = form.email.toLowerCase().trim();
+          const password = form.password;
+          
+          // 1. Buscar usuário local
+          const localUser = findLocalUser(emailLower);
+          
+          if (localUser && localUser.password === password) {
             setCurrentUser({
-              id: '1',
-              email: 'admin@base.ai',
-              name: 'Admin',
-              role: 'admin',
+              id: localUser.id,
+              email: localUser.email,
+              name: localUser.name,
+              role: localUser.role as 'admin' | 'editor' | 'client',
             });
-            toast.success('Bem-vindo, Admin!');
+            toast.success(`Bem-vindo, ${localUser.name}!`);
             navigate('/');
             setLoading(false);
             return;
           }
           
-          // 2. Verificar membro da equipe
+          // 2. Verificar membro da equipe com senha padrão (email antes do @)
           const member = teamMembers.find(m => 
-            m.email.toLowerCase() === form.email.toLowerCase()
+            m.email.toLowerCase() === emailLower
           );
           
           if (member) {
-            // Verificar senha armazenada localmente
-            if (verifyLocalPassword(form.email, form.password)) {
+            const defaultPassword = emailLower.split('@')[0];
+            if (password === defaultPassword) {
+              // Criar usuário local para próximos logins
+              const newUser: LocalUser = {
+                id: member.id,
+                name: member.name,
+                email: member.email,
+                password: password,
+                role: member.role === 'manager' ? 'admin' : 'editor',
+                createdAt: new Date().toISOString(),
+              };
+              saveLocalUser(newUser);
+              
               setCurrentUser({
                 id: member.id,
                 email: member.email,
                 name: member.name,
-                role: member.role === 'manager' ? 'admin' : 
-                      member.role === 'both' ? 'editor' : member.role,
+                role: member.role === 'manager' ? 'admin' : 'editor',
               });
               toast.success(`Bem-vindo, ${member.name}!`);
               navigate('/');
               setLoading(false);
               return;
             }
-          }
-          
-          // 3. Verificar se tem senha cadastrada (usuário sem ser membro)
-          if (verifyLocalPassword(form.email, form.password)) {
-            const userName = form.email.split('@')[0];
-            setCurrentUser({
-              id: form.email,
-              email: form.email,
-              name: userName.charAt(0).toUpperCase() + userName.slice(1),
-              role: 'editor',
-            });
-            toast.success(`Bem-vindo!`);
-            navigate('/');
-            setLoading(false);
-            return;
           }
           
           toast.error('Email ou senha incorretos');
@@ -143,56 +162,84 @@ export const LoginPage = () => {
         
         // ----- CADASTRO LOCAL -----
         else if (mode === 'register') {
-          if (!form.name.trim()) {
+          const emailLower = form.email.toLowerCase().trim();
+          const name = form.name.trim();
+          const password = form.password;
+          const confirmPassword = form.confirmPassword;
+          
+          if (!name) {
             toast.error('Nome é obrigatório');
             setLoading(false);
             return;
           }
           
-          if (form.password !== form.confirmPassword) {
+          if (password !== confirmPassword) {
             toast.error('Senhas não coincidem');
             setLoading(false);
             return;
           }
 
-          if (form.password.length < 6) {
+          if (password.length < 6) {
             toast.error('Senha deve ter no mínimo 6 caracteres');
             setLoading(false);
             return;
           }
           
           // Verificar se email já existe
-          const existingMember = teamMembers.find(m => 
-            m.email.toLowerCase() === form.email.toLowerCase()
-          );
-          
-          if (existingMember || form.email.toLowerCase() === 'admin@base.ai') {
+          const existingUser = findLocalUser(emailLower);
+          if (existingUser) {
             toast.error('Este email já está cadastrado');
             setLoading(false);
             return;
           }
           
-          // Salvar senha localmente
-          setLocalPassword(form.email, form.password);
-          
-          // Adicionar como membro da equipe
-          addTeamMember({
-            name: form.name,
-            email: form.email,
+          // Criar novo usuário
+          const newUser: LocalUser = {
+            id: `user_${Date.now()}`,
+            name: name,
+            email: emailLower,
+            password: password,
             role: 'editor',
-            is_active: true,
+            createdAt: new Date().toISOString(),
+          };
+          
+          saveLocalUser(newUser);
+          
+          // Fazer login automático
+          setCurrentUser({
+            id: newUser.id,
+            email: newUser.email,
+            name: newUser.name,
+            role: 'editor',
           });
           
-          toast.success('Conta criada com sucesso! Faça login.');
-          setMode('login');
-          setForm({ ...form, name: '', password: '', confirmPassword: '' });
+          toast.success('Conta criada com sucesso!');
+          navigate('/');
           setLoading(false);
           return;
         }
         
         // ----- ESQUECI SENHA -----
         else if (mode === 'forgot') {
-          toast.error('Entre em contato com o administrador para redefinir sua senha');
+          const emailLower = form.email.toLowerCase().trim();
+          const user = findLocalUser(emailLower);
+          
+          if (user) {
+            // Gerar nova senha temporária
+            const tempPassword = Math.random().toString(36).slice(-8);
+            updateLocalUserPassword(emailLower, tempPassword);
+            
+            toast.success(`Sua nova senha temporária é: ${tempPassword}`, {
+              duration: 10000,
+            });
+            toast('Anote essa senha! Você pode alterá-la depois.', {
+              duration: 8000,
+              icon: '📝',
+            });
+          } else {
+            toast.error('Email não encontrado');
+          }
+          
           setLoading(false);
           return;
         }
@@ -409,7 +456,7 @@ export const LoginPage = () => {
                 <>
                   {mode === 'login' && <><Icons.LogIn size={20} /> Entrar</>}
                   {mode === 'register' && <><Icons.UserPlus size={20} /> Criar conta</>}
-                  {mode === 'forgot' && <><Icons.Mail size={20} /> Enviar email</>}
+                  {mode === 'forgot' && <><Icons.Mail size={20} /> Recuperar</>}
                 </>
               )}
             </button>
@@ -456,20 +503,7 @@ export const LoginPage = () => {
         <p className="text-center text-gray-600 text-sm mt-6">
           © 2025 BASE Agency • agenciabase.tech
         </p>
-
-        {/* Dev Mode Notice */}
-        {!isSupabaseConfigured() && (
-          <div className="mt-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-xl">
-            <p className="text-orange-400 text-sm text-center">
-              <Icons.Info className="inline mr-1" size={16} />
-              Admin: admin@base.ai / admin123
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );
 };
-
-// Exportar função para uso externo (quando adiciona membro na equipe)
-export { setLocalPassword };
