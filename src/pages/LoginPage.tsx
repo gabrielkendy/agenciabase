@@ -5,7 +5,7 @@ import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import toast from 'react-hot-toast';
 
-type AuthMode = 'login' | 'register';
+type AuthMode = 'login' | 'register' | 'forgot';
 
 // ============================================
 // SISTEMA DE USUÁRIOS LOCAL (SEM SUPABASE)
@@ -36,7 +36,6 @@ const getLocalUsers = (): LocalUser[] => {
     const stored = localStorage.getItem(LOCAL_USERS_KEY);
     if (!stored) return [DEFAULT_ADMIN];
     const users = JSON.parse(stored) as LocalUser[];
-    // Garantir que admin padrão sempre existe
     const hasAdmin = users.some(u => u.email.toLowerCase() === 'admin@base.ai');
     if (!hasAdmin) users.push(DEFAULT_ADMIN);
     return users;
@@ -78,6 +77,7 @@ export const LoginPage = () => {
   const [mode, setMode] = useState<AuthMode>('login');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
   
   const [form, setForm] = useState({
     email: '',
@@ -207,7 +207,6 @@ export const LoginPage = () => {
 
       const newUser = createUser(name, email, password);
       
-      // Login automático
       setCurrentUser({
         id: newUser.id,
         email: newUser.email,
@@ -243,6 +242,43 @@ export const LoginPage = () => {
     }
   };
 
+  const handleForgotPassword = async () => {
+    const email = form.email.toLowerCase().trim();
+
+    if (!email) {
+      toast.error('Digite seu email');
+      return;
+    }
+
+    // Modo local - não tem como enviar email
+    if (!isSupabaseConfigured()) {
+      toast.error('Recuperação de senha requer configuração do servidor de email. Entre em contato com o administrador.');
+      return;
+    }
+
+    // Supabase - envia email de recuperação
+    if (!supabase) {
+      toast.error('Erro de configuração');
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      if (error.message.includes('rate limit')) {
+        toast.error('Aguarde alguns minutos antes de tentar novamente');
+      } else {
+        toast.error('Erro ao enviar email. Verifique o endereço.');
+      }
+      return;
+    }
+
+    setEmailSent(true);
+    toast.success('Email de recuperação enviado!');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -252,6 +288,8 @@ export const LoginPage = () => {
         await handleLogin();
       } else if (mode === 'register') {
         await handleRegister();
+      } else if (mode === 'forgot') {
+        await handleForgotPassword();
       }
     } catch (error: any) {
       console.error('Auth error:', error);
@@ -287,137 +325,188 @@ export const LoginPage = () => {
           <h2 className="text-xl font-semibold text-white mb-6 text-center">
             {mode === 'login' && 'Entrar na sua conta'}
             {mode === 'register' && 'Criar nova conta'}
+            {mode === 'forgot' && 'Recuperar senha'}
           </h2>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Nome (só cadastro) */}
-            {mode === 'register' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Nome completo</label>
-                <div className="relative">
-                  <Icons.User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
-                  <input
-                    type="text"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Seu nome"
-                    className="w-full pl-11 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
-                  />
+          {/* Email enviado - mostrar mensagem */}
+          {mode === 'forgot' && emailSent ? (
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto">
+                <Icons.Mail className="text-green-500" size={32} />
+              </div>
+              <h3 className="text-lg font-medium text-white">Email enviado!</h3>
+              <p className="text-gray-400 text-sm">
+                Verifique sua caixa de entrada e clique no link para redefinir sua senha.
+              </p>
+              <p className="text-gray-500 text-xs">
+                Não recebeu? Verifique a pasta de spam ou aguarde alguns minutos.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setMode('login'); setEmailSent(false); }}
+                className="text-orange-500 hover:text-orange-400 font-medium transition"
+              >
+                Voltar para login
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Nome (só cadastro) */}
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Nome completo</label>
+                  <div className="relative">
+                    <Icons.User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                    <input
+                      type="text"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder="Seu nome"
+                      className="w-full pl-11 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Email</label>
-              <div className="relative">
-                <Icons.Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="seu@email.com"
-                  required
-                  className="w-full pl-11 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
-                />
-              </div>
-            </div>
-
-            {/* Senha */}
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Senha</label>
-              <div className="relative">
-                <Icons.Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder="••••••••"
-                  required
-                  className="w-full pl-11 pr-12 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition"
-                >
-                  {showPassword ? <Icons.EyeOff size={20} /> : <Icons.Eye size={20} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Confirmar Senha (só cadastro) */}
-            {mode === 'register' && (
+              {/* Email */}
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Confirmar senha</label>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Email</label>
                 <div className="relative">
-                  <Icons.Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <Icons.Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
                   <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={form.confirmPassword}
-                    onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
-                    placeholder="••••••••"
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="seu@email.com"
                     required
                     className="w-full pl-11 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
                   />
                 </div>
               </div>
-            )}
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 disabled:opacity-50 rounded-xl text-white font-semibold transition flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <Icons.Loader className="animate-spin" size={20} />
-              ) : (
-                <>
-                  {mode === 'login' && <><Icons.LogIn size={20} /> Entrar</>}
-                  {mode === 'register' && <><Icons.UserPlus size={20} /> Criar conta</>}
-                </>
+              {/* Instrução para recuperar senha */}
+              {mode === 'forgot' && (
+                <p className="text-gray-400 text-sm">
+                  Digite seu email e enviaremos um link para você criar uma nova senha.
+                </p>
               )}
-            </button>
-          </form>
+
+              {/* Senha */}
+              {mode !== 'forgot' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Senha</label>
+                  <div className="relative">
+                    <Icons.Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={form.password}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      placeholder="••••••••"
+                      required
+                      className="w-full pl-11 pr-12 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition"
+                    >
+                      {showPassword ? <Icons.EyeOff size={20} /> : <Icons.Eye size={20} />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Confirmar Senha (só cadastro) */}
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Confirmar senha</label>
+                  <div className="relative">
+                    <Icons.Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={form.confirmPassword}
+                      onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                      placeholder="••••••••"
+                      required
+                      className="w-full pl-11 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Esqueci senha link */}
+              {mode === 'login' && (
+                <div className="text-right">
+                  <button
+                    type="button"
+                    onClick={() => setMode('forgot')}
+                    className="text-sm text-orange-500 hover:text-orange-400 transition"
+                  >
+                    Esqueci minha senha
+                  </button>
+                </div>
+              )}
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 disabled:opacity-50 rounded-xl text-white font-semibold transition flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <Icons.Loader className="animate-spin" size={20} />
+                ) : (
+                  <>
+                    {mode === 'login' && <><Icons.LogIn size={20} /> Entrar</>}
+                    {mode === 'register' && <><Icons.UserPlus size={20} /> Criar conta</>}
+                    {mode === 'forgot' && <><Icons.Mail size={20} /> Enviar link</>}
+                  </>
+                )}
+              </button>
+            </form>
+          )}
 
           {/* Divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-800" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gray-900 text-gray-500">ou</span>
-            </div>
-          </div>
+          {!(mode === 'forgot' && emailSent) && (
+            <>
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-800" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-gray-900 text-gray-500">ou</span>
+                </div>
+              </div>
 
-          {/* Toggle Mode */}
-          <div className="text-center">
-            {mode === 'login' && (
-              <p className="text-gray-400">
-                Não tem conta?{' '}
-                <button
-                  type="button"
-                  onClick={() => setMode('register')}
-                  className="text-orange-500 hover:text-orange-400 font-medium transition"
-                >
-                  Criar agora
-                </button>
-              </p>
-            )}
-            {mode === 'register' && (
-              <p className="text-gray-400">
-                Já tem conta?{' '}
-                <button
-                  type="button"
-                  onClick={() => setMode('login')}
-                  className="text-orange-500 hover:text-orange-400 font-medium transition"
-                >
-                  Fazer login
-                </button>
-              </p>
-            )}
-          </div>
+              {/* Toggle Mode */}
+              <div className="text-center">
+                {mode === 'login' && (
+                  <p className="text-gray-400">
+                    Não tem conta?{' '}
+                    <button
+                      type="button"
+                      onClick={() => setMode('register')}
+                      className="text-orange-500 hover:text-orange-400 font-medium transition"
+                    >
+                      Criar agora
+                    </button>
+                  </p>
+                )}
+                {(mode === 'register' || mode === 'forgot') && (
+                  <p className="text-gray-400">
+                    Já tem conta?{' '}
+                    <button
+                      type="button"
+                      onClick={() => { setMode('login'); setEmailSent(false); }}
+                      className="text-orange-500 hover:text-orange-400 font-medium transition"
+                    >
+                      Fazer login
+                    </button>
+                  </p>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Footer */}

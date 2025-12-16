@@ -13,6 +13,7 @@ import { ApprovalPage } from './pages/ApprovalPage';
 import { AdminPage } from './pages/AdminPage';
 import { ChatbotPage } from './pages/ChatbotPage';
 import { LoginPage } from './pages/LoginPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { Icons } from './components/Icons';
 import { useStore } from './store';
 
@@ -32,7 +33,8 @@ function AppContent() {
   const { currentUser } = useStore();
   const isPublicPage = location.pathname.startsWith('/aprovacao') || 
                        location.pathname.startsWith('/bot') ||
-                       location.pathname === '/login';
+                       location.pathname === '/login' ||
+                       location.pathname === '/reset-password';
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
 
@@ -62,6 +64,7 @@ function AppContent() {
         <Route path="/login" element={
           currentUser ? <Navigate to="/" replace /> : <LoginPage />
         } />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/aprovacao/:token" element={<ApprovalPage />} />
         <Route path="/bot/:botId" element={<ChatbotPage />} />
         <Route path="/bot" element={<ChatbotPage />} />
