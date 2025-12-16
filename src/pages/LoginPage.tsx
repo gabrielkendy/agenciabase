@@ -7,7 +7,9 @@ import toast from 'react-hot-toast';
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
-// Armazenar usuários localmente (modo sem Supabase)
+// ============================================
+// SISTEMA DE USUÁRIOS LOCAL (SEM SUPABASE)
+// ============================================
 const LOCAL_USERS_KEY = 'base_agency_users';
 
 interface LocalUser {
@@ -15,43 +17,75 @@ interface LocalUser {
   name: string;
   email: string;
   password: string;
-  role: string;
+  role: 'admin' | 'editor' | 'client';
   createdAt: string;
 }
 
+// Admin padrão do sistema
+const DEFAULT_ADMIN: LocalUser = {
+  id: 'admin-001',
+  name: 'Administrador',
+  email: 'admin@base.ai',
+  password: 'admin123',
+  role: 'admin',
+  createdAt: '2025-01-01T00:00:00.000Z',
+};
+
 const getLocalUsers = (): LocalUser[] => {
   try {
-    return JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
+    const stored = localStorage.getItem(LOCAL_USERS_KEY);
+    if (!stored) return [DEFAULT_ADMIN];
+    const users = JSON.parse(stored) as LocalUser[];
+    // Garantir que admin padrão sempre existe
+    const hasAdmin = users.some(u => u.email.toLowerCase() === 'admin@base.ai');
+    if (!hasAdmin) users.push(DEFAULT_ADMIN);
+    return users;
   } catch {
-    return [];
+    return [DEFAULT_ADMIN];
   }
 };
 
-const saveLocalUser = (user: LocalUser) => {
-  const users = getLocalUsers();
-  users.push(user);
+const saveLocalUsers = (users: LocalUser[]) => {
   localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
 };
 
-const findLocalUser = (email: string): LocalUser | undefined => {
+const findUserByEmail = (email: string): LocalUser | undefined => {
   const users = getLocalUsers();
-  return users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  return users.find(u => u.email.toLowerCase() === email.toLowerCase().trim());
 };
 
-const updateLocalUserPassword = (email: string, newPassword: string) => {
+const createUser = (name: string, email: string, password: string, role: 'admin' | 'editor' | 'client' = 'editor'): LocalUser => {
   const users = getLocalUsers();
-  const userIndex = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
-  if (userIndex >= 0) {
-    users[userIndex].password = newPassword;
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+  const newUser: LocalUser = {
+    id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name: name.trim(),
+    email: email.toLowerCase().trim(),
+    password: password,
+    role: role,
+    createdAt: new Date().toISOString(),
+  };
+  users.push(newUser);
+  saveLocalUsers(users);
+  return newUser;
+};
+
+const updatePassword = (email: string, newPassword: string): boolean => {
+  const users = getLocalUsers();
+  const index = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase().trim());
+  if (index >= 0) {
+    users[index].password = newPassword;
+    saveLocalUsers(users);
     return true;
   }
   return false;
 };
 
+// ============================================
+// COMPONENTE DE LOGIN
+// ============================================
 export const LoginPage = () => {
   const navigate = useNavigate();
-  const { setCurrentUser, currentUser, teamMembers } = useStore();
+  const { setCurrentUser, currentUser } = useStore();
   const [mode, setMode] = useState<AuthMode>('login');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -70,21 +104,19 @@ export const LoginPage = () => {
     }
   }, [currentUser, navigate]);
 
-  // Check for existing Supabase session on mount
+  // Check Supabase session
   useEffect(() => {
     const checkSession = async () => {
       if (!isSupabaseConfigured() || !supabase) return;
-      
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          const userData = {
+          setCurrentUser({
             id: session.user.id,
             email: session.user.email || '',
             name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
             role: session.user.user_metadata?.role || 'editor',
-          };
-          setCurrentUser(userData);
+          });
           navigate('/');
         }
       } catch (error) {
@@ -94,240 +126,208 @@ export const LoginPage = () => {
     checkSession();
   }, []);
 
+  // ============================================
+  // HANDLERS
+  // ============================================
+  const handleLogin = async () => {
+    const email = form.email.toLowerCase().trim();
+    const password = form.password;
+
+    if (!email || !password) {
+      toast.error('Preencha email e senha');
+      return;
+    }
+
+    // Modo local
+    if (!isSupabaseConfigured()) {
+      const user = findUserByEmail(email);
+      
+      if (user && user.password === password) {
+        setCurrentUser({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        });
+        toast.success(`Bem-vindo, ${user.name}!`);
+        navigate('/');
+        return;
+      }
+      
+      toast.error('Email ou senha incorretos');
+      return;
+    }
+
+    // Supabase
+    if (!supabase) {
+      toast.error('Erro de configuração');
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      toast.error('Email ou senha incorretos');
+      return;
+    }
+
+    if (data.user) {
+      setCurrentUser({
+        id: data.user.id,
+        email: data.user.email || '',
+        name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'Usuário',
+        role: data.user.user_metadata?.role || 'editor',
+      });
+      toast.success('Login realizado!');
+      navigate('/');
+    }
+  };
+
+  const handleRegister = async () => {
+    const name = form.name.trim();
+    const email = form.email.toLowerCase().trim();
+    const password = form.password;
+    const confirmPassword = form.confirmPassword;
+
+    if (!name) {
+      toast.error('Nome é obrigatório');
+      return;
+    }
+
+    if (!email) {
+      toast.error('Email é obrigatório');
+      return;
+    }
+
+    if (password.length < 6) {
+      toast.error('Senha deve ter no mínimo 6 caracteres');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast.error('Senhas não coincidem');
+      return;
+    }
+
+    // Modo local
+    if (!isSupabaseConfigured()) {
+      const existing = findUserByEmail(email);
+      if (existing) {
+        toast.error('Este email já está cadastrado');
+        return;
+      }
+
+      const newUser = createUser(name, email, password);
+      
+      // Login automático
+      setCurrentUser({
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        role: newUser.role,
+      });
+      
+      toast.success('Conta criada com sucesso!');
+      navigate('/');
+      return;
+    }
+
+    // Supabase
+    if (!supabase) {
+      toast.error('Erro de configuração');
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name, role: 'editor' } },
+    });
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    if (data.user) {
+      toast.success('Conta criada! Verifique seu email.');
+      setMode('login');
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const email = form.email.toLowerCase().trim();
+
+    if (!email) {
+      toast.error('Digite seu email');
+      return;
+    }
+
+    // Modo local
+    if (!isSupabaseConfigured()) {
+      const user = findUserByEmail(email);
+      
+      if (!user) {
+        toast.error('Email não encontrado. Crie uma conta.');
+        return;
+      }
+
+      // Gerar senha temporária
+      const tempPassword = Math.random().toString(36).slice(-8);
+      updatePassword(email, tempPassword);
+
+      toast.success(`Nova senha: ${tempPassword}`, { duration: 15000 });
+      toast('Anote a senha e faça login!', { icon: '📝', duration: 8000 });
+      
+      setForm({ ...form, password: tempPassword });
+      setMode('login');
+      return;
+    }
+
+    // Supabase
+    if (!supabase) {
+      toast.error('Erro de configuração');
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success('Email de recuperação enviado!');
+    setMode('login');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // ===== MODO LOCAL (sem Supabase) =====
-      if (!isSupabaseConfigured()) {
-        
-        // ----- LOGIN -----
-        if (mode === 'login') {
-          const emailLower = form.email.toLowerCase().trim();
-          const password = form.password;
-          
-          // 1. Buscar usuário local
-          const localUser = findLocalUser(emailLower);
-          
-          if (localUser && localUser.password === password) {
-            setCurrentUser({
-              id: localUser.id,
-              email: localUser.email,
-              name: localUser.name,
-              role: localUser.role as 'admin' | 'editor' | 'client',
-            });
-            toast.success(`Bem-vindo, ${localUser.name}!`);
-            navigate('/');
-            setLoading(false);
-            return;
-          }
-          
-          // 2. Verificar membro da equipe com senha padrão (email antes do @)
-          const member = teamMembers.find(m => 
-            m.email.toLowerCase() === emailLower
-          );
-          
-          if (member) {
-            const defaultPassword = emailLower.split('@')[0];
-            if (password === defaultPassword) {
-              // Criar usuário local para próximos logins
-              const newUser: LocalUser = {
-                id: member.id,
-                name: member.name,
-                email: member.email,
-                password: password,
-                role: member.role === 'manager' ? 'admin' : 'editor',
-                createdAt: new Date().toISOString(),
-              };
-              saveLocalUser(newUser);
-              
-              setCurrentUser({
-                id: member.id,
-                email: member.email,
-                name: member.name,
-                role: member.role === 'manager' ? 'admin' : 'editor',
-              });
-              toast.success(`Bem-vindo, ${member.name}!`);
-              navigate('/');
-              setLoading(false);
-              return;
-            }
-          }
-          
-          toast.error('Email ou senha incorretos');
-          setLoading(false);
-          return;
-        }
-        
-        // ----- CADASTRO LOCAL -----
-        else if (mode === 'register') {
-          const emailLower = form.email.toLowerCase().trim();
-          const name = form.name.trim();
-          const password = form.password;
-          const confirmPassword = form.confirmPassword;
-          
-          if (!name) {
-            toast.error('Nome é obrigatório');
-            setLoading(false);
-            return;
-          }
-          
-          if (password !== confirmPassword) {
-            toast.error('Senhas não coincidem');
-            setLoading(false);
-            return;
-          }
-
-          if (password.length < 6) {
-            toast.error('Senha deve ter no mínimo 6 caracteres');
-            setLoading(false);
-            return;
-          }
-          
-          // Verificar se email já existe
-          const existingUser = findLocalUser(emailLower);
-          if (existingUser) {
-            toast.error('Este email já está cadastrado');
-            setLoading(false);
-            return;
-          }
-          
-          // Criar novo usuário
-          const newUser: LocalUser = {
-            id: `user_${Date.now()}`,
-            name: name,
-            email: emailLower,
-            password: password,
-            role: 'editor',
-            createdAt: new Date().toISOString(),
-          };
-          
-          saveLocalUser(newUser);
-          
-          // Fazer login automático
-          setCurrentUser({
-            id: newUser.id,
-            email: newUser.email,
-            name: newUser.name,
-            role: 'editor',
-          });
-          
-          toast.success('Conta criada com sucesso!');
-          navigate('/');
-          setLoading(false);
-          return;
-        }
-        
-        // ----- ESQUECI SENHA -----
-        else if (mode === 'forgot') {
-          const emailLower = form.email.toLowerCase().trim();
-          const user = findLocalUser(emailLower);
-          
-          if (user) {
-            // Gerar nova senha temporária
-            const tempPassword = Math.random().toString(36).slice(-8);
-            updateLocalUserPassword(emailLower, tempPassword);
-            
-            toast.success(`Sua nova senha temporária é: ${tempPassword}`, {
-              duration: 10000,
-            });
-            toast('Anote essa senha! Você pode alterá-la depois.', {
-              duration: 8000,
-              icon: '📝',
-            });
-          } else {
-            toast.error('Email não encontrado');
-          }
-          
-          setLoading(false);
-          return;
-        }
-      }
-
-      // ===== LOGIN COM SUPABASE =====
       if (mode === 'login') {
-        if (!supabase) throw new Error('Supabase não configurado');
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: form.email,
-          password: form.password,
-        });
-
-        if (error) throw error;
-
-        if (data.user) {
-          setCurrentUser({
-            id: data.user.id,
-            email: data.user.email || '',
-            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'Usuário',
-            role: data.user.user_metadata?.role || 'editor',
-          });
-          toast.success('Login realizado com sucesso!');
-          navigate('/');
-        }
-      } 
-      // ===== CADASTRO COM SUPABASE =====
-      else if (mode === 'register') {
-        if (form.password !== form.confirmPassword) {
-          toast.error('Senhas não coincidem');
-          setLoading(false);
-          return;
-        }
-
-        if (form.password.length < 6) {
-          toast.error('Senha deve ter no mínimo 6 caracteres');
-          setLoading(false);
-          return;
-        }
-
-        if (!supabase) throw new Error('Supabase não configurado');
-        const { data, error } = await supabase.auth.signUp({
-          email: form.email,
-          password: form.password,
-          options: {
-            data: {
-              name: form.name,
-              role: 'editor',
-            },
-          },
-        });
-
-        if (error) throw error;
-
-        if (data.user) {
-          toast.success('Conta criada! Verifique seu email para confirmar.');
-          setMode('login');
-        }
-      }
-      // ===== ESQUECI SENHA COM SUPABASE =====
-      else if (mode === 'forgot') {
-        if (!supabase) throw new Error('Supabase não configurado');
-        const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
-          redirectTo: `${window.location.origin}/reset-password`,
-        });
-
-        if (error) throw error;
-
-        toast.success('Email de recuperação enviado!');
-        setMode('login');
+        await handleLogin();
+      } else if (mode === 'register') {
+        await handleRegister();
+      } else if (mode === 'forgot') {
+        await handleForgotPassword();
       }
     } catch (error: any) {
       console.error('Auth error:', error);
-      if (error.message?.includes('Invalid login')) {
-        toast.error('Email ou senha incorretos');
-      } else if (error.message?.includes('Email not confirmed')) {
-        toast.error('Confirme seu email antes de fazer login');
-      } else {
-        toast.error(error.message || 'Erro ao processar');
-      }
+      toast.error(error.message || 'Erro ao processar');
     } finally {
       setLoading(false);
     }
   };
 
+  // ============================================
+  // RENDER
+  // ============================================
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      {/* Background Effects */}
+      {/* Background */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-yellow-500/10 rounded-full blur-3xl" />
@@ -363,7 +363,6 @@ export const LoginPage = () => {
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder="Seu nome"
-                    required
                     className="w-full pl-11 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
                   />
                 </div>
@@ -398,7 +397,6 @@ export const LoginPage = () => {
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                     placeholder="••••••••"
                     required
-                    minLength={6}
                     className="w-full pl-11 pr-12 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
                   />
                   <button
@@ -424,14 +422,13 @@ export const LoginPage = () => {
                     onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
                     placeholder="••••••••"
                     required
-                    minLength={6}
                     className="w-full pl-11 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition"
                   />
                 </div>
               </div>
             )}
 
-            {/* Esqueci senha link */}
+            {/* Esqueci senha */}
             {mode === 'login' && (
               <div className="text-right">
                 <button
@@ -444,7 +441,7 @@ export const LoginPage = () => {
               </div>
             )}
 
-            {/* Submit Button */}
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
@@ -478,6 +475,7 @@ export const LoginPage = () => {
               <p className="text-gray-400">
                 Não tem conta?{' '}
                 <button
+                  type="button"
                   onClick={() => setMode('register')}
                   className="text-orange-500 hover:text-orange-400 font-medium transition"
                 >
@@ -489,6 +487,7 @@ export const LoginPage = () => {
               <p className="text-gray-400">
                 Já tem conta?{' '}
                 <button
+                  type="button"
                   onClick={() => setMode('login')}
                   className="text-orange-500 hover:text-orange-400 font-medium transition"
                 >
