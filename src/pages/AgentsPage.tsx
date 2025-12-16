@@ -11,14 +11,32 @@ const getModelsForProvider = (provider: AIProvider) => {
   return AI_MODELS.filter(m => m.provider === provider);
 };
 
+// Avatares disponíveis para agentes
+const AGENT_AVATARS = ['🤖', '👩‍💼', '👨‍💻', '🧠', '💡', '🎨', '📊', '✍️', '🎯', '🚀', '💬', '📱'];
+
 export const AgentsPage: React.FC = () => {
-  const { agents, updateAgent, apiConfig } = useStore();
+  const { agents, addAgent, updateAgent, deleteAgent, apiConfig, currentUser } = useStore();
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(agents[0] || null);
   const [activeTab, setActiveTab] = useState<'config' | 'test' | 'knowledge'>('config');
   const [testMessage, setTestMessage] = useState('');
   const [testResponse, setTestResponse] = useState('');
   const [isTesting, setIsTesting] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Agent>>({});
+  const [showNewAgentModal, setShowNewAgentModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Verificar se é admin
+  const isAdmin = currentUser?.role === 'admin';
+
+  // Form para novo agente
+  const [newAgentForm, setNewAgentForm] = useState({
+    name: '',
+    role: '',
+    description: '',
+    avatar: '🤖',
+    provider: 'gemini' as AIProvider,
+    model: 'gemini-2.0-flash-exp' as AIModel,
+  });
 
   const selectAgent = (agent: Agent) => {
     setSelectedAgent(agent);
@@ -31,10 +49,55 @@ export const AgentsPage: React.FC = () => {
       model: agent.model, 
       temperature: agent.temperature, 
       is_active: agent.is_active,
+      avatar: agent.avatar,
       trained_knowledge: agent.trained_knowledge
     });
     setActiveTab('config');
     setTestResponse('');
+  };
+
+  const handleCreateAgent = () => {
+    if (!newAgentForm.name.trim()) {
+      toast.error('Nome é obrigatório');
+      return;
+    }
+    if (!newAgentForm.role.trim()) {
+      toast.error('Função é obrigatória');
+      return;
+    }
+
+    addAgent({
+      name: newAgentForm.name,
+      role: newAgentForm.role,
+      description: newAgentForm.description || `Agente ${newAgentForm.name}`,
+      avatar: newAgentForm.avatar,
+      provider: newAgentForm.provider,
+      model: newAgentForm.model,
+      system_prompt: `Você é ${newAgentForm.name}, ${newAgentForm.role}. ${newAgentForm.description}`,
+      temperature: 0.7,
+      is_active: true,
+      trained_knowledge: '',
+      user_id: currentUser?.id || '',
+    });
+
+    toast.success('Agente criado com sucesso!');
+    setShowNewAgentModal(false);
+    setNewAgentForm({
+      name: '',
+      role: '',
+      description: '',
+      avatar: '🤖',
+      provider: 'gemini',
+      model: 'gemini-2.0-flash-exp',
+    });
+  };
+
+  const handleDeleteAgent = () => {
+    if (!selectedAgent) return;
+    deleteAgent(selectedAgent.id);
+    toast.success('Agente removido');
+    setSelectedAgent(agents.filter(a => a.id !== selectedAgent.id)[0] || null);
+    setShowDeleteConfirm(false);
   };
 
   const handleSaveAgent = () => {
@@ -53,25 +116,39 @@ export const AgentsPage: React.FC = () => {
       const model = editForm.model || selectedAgent.model;
       const systemPrompt = editForm.system_prompt || selectedAgent.system_prompt;
       
+      // Adicionar conhecimento ao prompt se existir
+      let fullPrompt = systemPrompt;
+      if (editForm.trained_knowledge) {
+        try {
+          const knowledge = JSON.parse(editForm.trained_knowledge);
+          if (knowledge.length > 0) {
+            const knowledgeText = knowledge.map((k: any) => {
+              if (k.type === 'url') return `Fonte: ${k.content}`;
+              if (k.type === 'pdf') return `Documento: ${JSON.parse(k.content).name}`;
+              if (k.type === 'video') return `Vídeo: ${JSON.parse(k.content).url || k.content}`;
+              return k.content;
+            }).join('\n');
+            fullPrompt += `\n\n### Base de Conhecimento:\n${knowledgeText}`;
+          }
+        } catch {}
+      }
+      
       if (provider === 'openrouter') {
-        // Usar OpenRouter
         const { openrouterService } = await import('../services/openrouterService');
         if (!apiConfig.openrouter_key) {
           throw new Error('Configure sua API Key do OpenRouter em Configurações');
         }
         openrouterService.setApiKey(apiConfig.openrouter_key);
         const response = await openrouterService.chat(model, [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: fullPrompt },
           { role: 'user', content: testMessage }
         ], { temperature: editForm.temperature || 0.7 });
         setTestResponse(response);
       } else if (provider === 'gemini') {
-        // Usar Gemini direto
         const { sendMessageToGemini } = await import('../services/geminiService');
-        const response = await sendMessageToGemini(testMessage, systemPrompt, apiConfig.gemini_key || '');
+        const response = await sendMessageToGemini(testMessage, fullPrompt, apiConfig.gemini_key || '');
         setTestResponse(response);
       } else if (provider === 'openai') {
-        // Usar OpenAI direto
         if (!apiConfig.openai_key) {
           throw new Error('Configure sua API Key da OpenAI em Configurações');
         }
@@ -84,7 +161,7 @@ export const AgentsPage: React.FC = () => {
           body: JSON.stringify({
             model: model,
             messages: [
-              { role: 'system', content: systemPrompt },
+              { role: 'system', content: fullPrompt },
               { role: 'user', content: testMessage }
             ],
             temperature: editForm.temperature || 0.7,
@@ -100,7 +177,6 @@ export const AgentsPage: React.FC = () => {
     }
   };
 
-  // Verificar se o provider está configurado
   const isProviderConfigured = (provider: AIProvider): boolean => {
     if (provider === 'openrouter') return !!apiConfig.openrouter_key;
     if (provider === 'gemini') return !!apiConfig.gemini_key;
@@ -113,11 +189,24 @@ export const AgentsPage: React.FC = () => {
       {/* Sidebar */}
       <div className="w-72 border-r border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-800">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Icons.Bot size={20} className="text-orange-400" />
-            Agentes IA
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">{agents.length} agentes configurados</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Icons.Bot size={20} className="text-orange-400" />
+                Agentes IA
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">{agents.length} agentes configurados</p>
+            </div>
+            {isAdmin && (
+              <button
+                onClick={() => setShowNewAgentModal(true)}
+                className="p-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg transition"
+                title="Criar novo agente"
+              >
+                <Icons.Plus size={18} />
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {agents.map(agent => (
@@ -162,6 +251,15 @@ export const AgentsPage: React.FC = () => {
                   )}>
                     {selectedAgent.is_active ? 'Ativo' : 'Inativo'}
                   </span>
+                  {isAdmin && (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
+                      title="Excluir agente"
+                    >
+                      <Icons.Trash size={18} />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -201,6 +299,27 @@ export const AgentsPage: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-6">
               {activeTab === 'config' && (
                 <div className="max-w-2xl space-y-6">
+                  {/* Avatar Selection */}
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">Avatar</label>
+                    <div className="flex flex-wrap gap-2">
+                      {AGENT_AVATARS.map(avatar => (
+                        <button
+                          key={avatar}
+                          onClick={() => setEditForm({ ...editForm, avatar })}
+                          className={clsx(
+                            'w-10 h-10 text-2xl rounded-lg border transition flex items-center justify-center',
+                            editForm.avatar === avatar 
+                              ? 'bg-orange-500/20 border-orange-500' 
+                              : 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                          )}
+                        >
+                          {avatar}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm text-gray-400 mb-1 block">Nome</label>
@@ -239,7 +358,11 @@ export const AgentsPage: React.FC = () => {
                       onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })} 
                       rows={8} 
                       className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none resize-none font-mono text-sm" 
+                      placeholder="Defina a personalidade, conhecimentos e instruções do agente..."
                     />
+                    <p className="text-xs text-gray-500 mt-1">
+                      💡 O system prompt define como o agente deve se comportar e responder.
+                    </p>
                   </div>
 
                   {/* Provider & Model Selection */}
@@ -247,7 +370,7 @@ export const AgentsPage: React.FC = () => {
                     <div>
                       <label className="text-sm text-gray-400 mb-2 block">Provider de IA</label>
                       <div className="grid grid-cols-3 gap-3">
-                        {/* OpenRouter - Destaque */}
+                        {/* OpenRouter */}
                         <button
                           onClick={() => setEditForm({ 
                             ...editForm, 
@@ -271,7 +394,7 @@ export const AgentsPage: React.FC = () => {
                           )}
                         </button>
 
-                        {/* OpenAI Direto */}
+                        {/* OpenAI */}
                         <button
                           onClick={() => setEditForm({ 
                             ...editForm, 
@@ -295,7 +418,7 @@ export const AgentsPage: React.FC = () => {
                           )}
                         </button>
 
-                        {/* Gemini Direto */}
+                        {/* Gemini */}
                         <button
                           onClick={() => setEditForm({ 
                             ...editForm, 
@@ -454,10 +577,160 @@ export const AgentsPage: React.FC = () => {
             <div className="text-center text-gray-500">
               <Icons.Bot size={64} className="mx-auto mb-4 opacity-30" />
               <p>Selecione um agente</p>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowNewAgentModal(true)}
+                  className="mt-4 px-4 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium flex items-center gap-2 mx-auto"
+                >
+                  <Icons.Plus size={18} />
+                  Criar novo agente
+                </button>
+              )}
             </div>
           </div>
         )}
       </div>
+
+      {/* Modal: Novo Agente */}
+      {showNewAgentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg">
+            <div className="p-6 border-b border-gray-800">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Icons.Plus size={20} className="text-orange-400" />
+                Novo Agente
+              </h2>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Avatar */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Avatar</label>
+                <div className="flex flex-wrap gap-2">
+                  {AGENT_AVATARS.map(avatar => (
+                    <button
+                      key={avatar}
+                      onClick={() => setNewAgentForm({ ...newAgentForm, avatar })}
+                      className={clsx(
+                        'w-10 h-10 text-2xl rounded-lg border transition flex items-center justify-center',
+                        newAgentForm.avatar === avatar 
+                          ? 'bg-orange-500/20 border-orange-500' 
+                          : 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                      )}
+                    >
+                      {avatar}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Nome */}
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">Nome *</label>
+                <input 
+                  type="text"
+                  value={newAgentForm.name}
+                  onChange={(e) => setNewAgentForm({ ...newAgentForm, name: e.target.value })}
+                  placeholder="Ex: Marcos"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Função */}
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">Função *</label>
+                <input 
+                  type="text"
+                  value={newAgentForm.role}
+                  onChange={(e) => setNewAgentForm({ ...newAgentForm, role: e.target.value })}
+                  placeholder="Ex: Especialista em SEO"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Descrição */}
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">Descrição</label>
+                <textarea 
+                  value={newAgentForm.description}
+                  onChange={(e) => setNewAgentForm({ ...newAgentForm, description: e.target.value })}
+                  placeholder="Descreva o que este agente faz..."
+                  rows={3}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none resize-none"
+                />
+              </div>
+
+              {/* Provider */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Provider de IA</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['gemini', 'openrouter', 'openai'] as AIProvider[]).map(p => (
+                    <button
+                      key={p}
+                      onClick={() => setNewAgentForm({ ...newAgentForm, provider: p })}
+                      className={clsx(
+                        'p-2 rounded-lg border text-sm transition',
+                        newAgentForm.provider === p 
+                          ? 'bg-orange-500/20 border-orange-500 text-white' 
+                          : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                      )}
+                    >
+                      {p === 'gemini' ? '✨ Gemini' : p === 'openrouter' ? '🌐 OpenRouter' : '🤖 OpenAI'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-800 flex gap-3 justify-end">
+              <button
+                onClick={() => setShowNewAgentModal(false)}
+                className="px-4 py-2 text-gray-400 hover:text-white transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCreateAgent}
+                className="px-6 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium flex items-center gap-2"
+              >
+                <Icons.Plus size={18} />
+                Criar Agente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirmar Exclusão */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-6">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Icons.Trash size={32} className="text-red-400" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Excluir agente?</h2>
+              <p className="text-gray-400 mb-6">
+                Tem certeza que deseja excluir <strong className="text-white">{selectedAgent?.name}</strong>? 
+                Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteAgent}
+                  className="px-6 py-2 bg-red-500 hover:bg-red-400 text-white rounded-lg font-medium flex items-center gap-2"
+                >
+                  <Icons.Trash size={18} />
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -473,6 +746,7 @@ const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ knowledge, onUpdate, onSave
   const [loading, setLoading] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [videoInput, setVideoInput] = useState('');
+  const [textInput, setTextInput] = useState('');
 
   // Parse knowledge entries
   const parseKnowledge = (knowledgeStr: string): { type: string; content: string; date: string }[] => {
@@ -505,7 +779,6 @@ const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ knowledge, onUpdate, onSave
     
     setLoading(true);
     try {
-      // Simular leitura do PDF (em produção, usar pdf.js ou backend)
       const reader = new FileReader();
       reader.onload = () => {
         const base64 = reader.result as string;
@@ -522,14 +795,8 @@ const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ knowledge, onUpdate, onSave
   const handleAddUrl = async () => {
     if (!urlInput.trim()) return;
     setLoading(true);
-    
-    try {
-      // Em produção, fazer scraping via backend
-      addEntry('url', urlInput);
-      setUrlInput('');
-    } catch (error) {
-      toast.error('Erro ao processar URL');
-    }
+    addEntry('url', urlInput);
+    setUrlInput('');
     setLoading(false);
   };
 
@@ -537,25 +804,22 @@ const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ knowledge, onUpdate, onSave
     if (!videoInput.trim()) return;
     setLoading(true);
     
-    try {
-      // Extrair ID do YouTube
-      const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-      const match = videoInput.match(youtubeRegex);
-      
-      if (match) {
-        addEntry('video', JSON.stringify({ 
-          platform: 'youtube', 
-          id: match[1], 
-          url: videoInput 
-        }));
-      } else {
-        addEntry('video', videoInput);
-      }
-      setVideoInput('');
-    } catch (error) {
-      toast.error('Erro ao processar vídeo');
+    const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+    const match = videoInput.match(youtubeRegex);
+    
+    if (match) {
+      addEntry('video', JSON.stringify({ platform: 'youtube', id: match[1], url: videoInput }));
+    } else {
+      addEntry('video', videoInput);
     }
+    setVideoInput('');
     setLoading(false);
+  };
+
+  const handleAddText = () => {
+    if (!textInput.trim()) return;
+    addEntry('text', textInput);
+    setTextInput('');
   };
 
   return (
@@ -566,12 +830,13 @@ const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ knowledge, onUpdate, onSave
           Base de Conhecimento
         </h3>
         <p className="text-sm text-gray-400">
-          Adicione documentos, links e vídeos para treinar este agente com conhecimento específico.
+          Adicione documentos, links, vídeos e textos para treinar este agente com conhecimento específico.
+          O conhecimento será incluído no contexto do agente durante as conversas.
         </p>
       </div>
 
       {/* Add Knowledge */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* PDF Upload */}
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
           <div className="flex items-center gap-2 mb-3">
@@ -621,7 +886,7 @@ const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ knowledge, onUpdate, onSave
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
           <div className="flex items-center gap-2 mb-3">
             <Icons.Video size={18} className="text-green-400" />
-            <span className="font-medium text-white text-sm">Vídeo</span>
+            <span className="font-medium text-white text-sm">Vídeo (YouTube)</span>
           </div>
           <div className="space-y-2">
             <input
@@ -635,6 +900,30 @@ const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ knowledge, onUpdate, onSave
               onClick={handleAddVideo}
               disabled={!videoInput.trim() || loading}
               className="w-full py-2 bg-green-500/20 text-green-400 rounded-lg text-sm hover:bg-green-500/30 disabled:opacity-50"
+            >
+              Adicionar
+            </button>
+          </div>
+        </div>
+
+        {/* Text Input */}
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <div className="flex items-center gap-2 mb-3">
+            <Icons.Edit size={18} className="text-yellow-400" />
+            <span className="font-medium text-white text-sm">Texto Manual</span>
+          </div>
+          <div className="space-y-2">
+            <textarea
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Cole ou digite informações..."
+              rows={3}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none resize-none"
+            />
+            <button
+              onClick={handleAddText}
+              disabled={!textInput.trim() || loading}
+              className="w-full py-2 bg-yellow-500/20 text-yellow-400 rounded-lg text-sm hover:bg-yellow-500/30 disabled:opacity-50"
             >
               Adicionar
             </button>
@@ -660,27 +949,28 @@ const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ knowledge, onUpdate, onSave
           <div className="text-center py-8 bg-gray-800/50 rounded-xl">
             <Icons.Database size={32} className="mx-auto text-gray-600 mb-2" />
             <p className="text-gray-500 text-sm">Nenhum conhecimento adicionado</p>
+            <p className="text-gray-600 text-xs mt-1">Adicione PDFs, links, vídeos ou textos acima</p>
           </div>
         ) : (
           entries.map((entry, index) => (
             <div key={index} className="bg-gray-800 rounded-lg p-3 flex items-center gap-3">
               <div className={clsx(
-                'w-10 h-10 rounded-lg flex items-center justify-center',
+                'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
                 entry.type === 'pdf' ? 'bg-red-500/20 text-red-400' :
                 entry.type === 'url' ? 'bg-blue-500/20 text-blue-400' :
                 entry.type === 'video' ? 'bg-green-500/20 text-green-400' :
-                'bg-gray-700 text-gray-400'
+                'bg-yellow-500/20 text-yellow-400'
               )}>
                 {entry.type === 'pdf' ? <Icons.FileText size={20} /> :
                  entry.type === 'url' ? <Icons.Link size={20} /> :
                  entry.type === 'video' ? <Icons.Video size={20} /> :
-                 <Icons.File size={20} />}
+                 <Icons.Edit size={20} />}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm truncate">
                   {entry.type === 'pdf' ? JSON.parse(entry.content).name :
-                   entry.type === 'video' ? (JSON.parse(entry.content).url || entry.content) :
-                   entry.content}
+                   entry.type === 'video' ? (() => { try { return JSON.parse(entry.content).url; } catch { return entry.content; } })() :
+                   entry.content.substring(0, 100) + (entry.content.length > 100 ? '...' : '')}
                 </p>
                 <p className="text-xs text-gray-500">
                   {entry.type.toUpperCase()} • {new Date(entry.date).toLocaleDateString('pt-BR')}
@@ -688,7 +978,7 @@ const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ knowledge, onUpdate, onSave
               </div>
               <button
                 onClick={() => removeEntry(index)}
-                className="text-gray-500 hover:text-red-400 transition"
+                className="text-gray-500 hover:text-red-400 transition flex-shrink-0"
               >
                 <Icons.X size={18} />
               </button>
@@ -698,15 +988,13 @@ const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ knowledge, onUpdate, onSave
       </div>
 
       {/* Save Button */}
-      {entries.length > 0 && (
-        <button 
-          onClick={onSave}
-          className="px-6 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium flex items-center gap-2"
-        >
-          <Icons.Save size={16} />
-          Salvar Conhecimento
-        </button>
-      )}
+      <button 
+        onClick={onSave}
+        className="px-6 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium flex items-center gap-2"
+      >
+        <Icons.Save size={16} />
+        Salvar Conhecimento
+      </button>
     </div>
   );
 };
