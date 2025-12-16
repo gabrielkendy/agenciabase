@@ -48,6 +48,7 @@ import {
   Image,
   Video,
   FileText,
+  Paperclip,
   Globe,
   Mail,
   Phone,
@@ -212,4 +213,6 @@ export const Icons = {
   UserPlus,
   UserCheck,
   Pencil,
+  Paperclip,
+  Attachment: Paperclip,
 };

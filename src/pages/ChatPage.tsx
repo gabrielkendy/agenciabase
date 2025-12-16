@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
-import { DemandStatus, ContentType, SocialChannel, Conversation, TeamMember } from '../types';
+import { DemandStatus, ContentType, SocialChannel, Conversation } from '../types';
 import { sendMessageToGemini } from '../services/geminiService';
 import { openrouterService } from '../services/openrouterService';
 import clsx from 'clsx';
@@ -37,7 +37,7 @@ interface ChatParticipant {
 export const ChatPage = () => {
   const { 
     agents, clients, apiConfig, messages, conversations, teamMembers,
-    addConversation, updateConversation, deleteConversation,
+    addConversation, updateConversation,
     addMessage, addDemand, addNotification 
   } = useStore();
   
@@ -60,7 +60,6 @@ export const ChatPage = () => {
   // Mentions
   const [showMentions, setShowMentions] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
-  const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
   
   // Participants modal
   const [showParticipantsModal, setShowParticipantsModal] = useState(false);
@@ -196,13 +195,6 @@ export const ChatPage = () => {
     if (atMatch) {
       setMentionSearch(atMatch[1]);
       setShowMentions(true);
-      
-      // Calculate position
-      const rect = e.target.getBoundingClientRect();
-      setMentionPosition({
-        top: rect.top - 200,
-        left: rect.left + 20,
-      });
     } else {
       setShowMentions(false);
       setMentionSearch('');
@@ -254,33 +246,7 @@ export const ChatPage = () => {
     setShowHistorySidebar(false);
   };
 
-  // Format file size
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
 
-  // Send message to Sofia with content
-  const handleSendToSofia = (content: string) => {
-    if (!sofiaAgent) {
-      toast.error('Agente Sofia não encontrado');
-      return;
-    }
-    
-    setSelectedAgents([sofiaAgent.id]);
-    const id = addConversation({
-      user_id: '1',
-      project_id: selectedProject,
-      title: 'Criar demanda',
-      agent_ids: [sofiaAgent.id],
-      is_team_chat: false,
-      updated_at: new Date().toISOString(),
-    });
-    setCurrentConversationId(id);
-    setSendToSofiaContent(content);
-    toast.success('Enviado para Sofia!');
-  };
 
   useEffect(() => {
     if (sendToSofiaContent && currentConversationId && sofiaAgent) {
@@ -373,7 +339,8 @@ Responda APENAS com um JSON válido no formato:
       return;
     }
 
-    const demandId = addDemand({
+    addDemand({
+      user_id: '1',
       client_id: selectedClient,
       title: demand.title,
       briefing: demand.briefing,
@@ -384,15 +351,24 @@ Responda APENAS com um JSON válido no formato:
       tags: demand.tags,
       scheduled_date: demand.scheduled_date,
       status: 'backlog' as DemandStatus,
-      created_by: '1',
+      created_by_ai: true,
+      media: [],
+      internal_approvers: [],
+      skip_internal_approval: false,
+      external_approvers: [],
+      skip_external_approval: false,
+      approval_link_sent: false,
+      approval_status: 'pending',
+      comments: [],
+      auto_schedule: false,
+      is_draft: false,
     });
 
     addNotification({
-      user_id: '1',
-      type: 'demand_created',
+      type: 'success',
       title: 'Demanda criada',
       message: `A demanda "${demand.title}" foi criada com sucesso!`,
-      data: { demand_id: demandId },
+      read: false,
     });
 
     toast.success('Demanda criada no Kanban!');
