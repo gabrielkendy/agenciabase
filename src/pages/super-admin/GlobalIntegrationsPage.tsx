@@ -252,13 +252,22 @@ export const GlobalIntegrationsPage = () => {
     setTestingProvider(provider);
     const creds = editingCredentials[provider];
 
+    // Verificar se a API key foi preenchida
+    const apiKey = creds.api_key || '';
+    if (provider !== 'zapi' && (!apiKey || apiKey.length < 10)) {
+      toast.error('Insira uma API Key valida');
+      setTestingProvider(null);
+      return;
+    }
+
     try {
       let success = false;
 
       switch (provider) {
         case 'gemini':
+          // Gemini: testa gerando conteudo
           const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${creds.api_key}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -266,31 +275,81 @@ export const GlobalIntegrationsPage = () => {
             }
           );
           success = geminiRes.ok;
+          if (!success) {
+            const err = await geminiRes.json().catch(() => ({}));
+            console.log('Gemini error:', err);
+          }
           break;
 
         case 'openrouter':
-          const orRes = await fetch('https://openrouter.ai/api/v1/models', {
-            headers: { 'Authorization': `Bearer ${creds.api_key}` }
+          // OpenRouter: testa com endpoint de creditos que requer auth
+          const orRes = await fetch('https://openrouter.ai/api/v1/auth/key', {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
           });
           success = orRes.ok;
+          if (!success) {
+            const err = await orRes.json().catch(() => ({}));
+            console.log('OpenRouter error:', err);
+          }
           break;
 
         case 'openai':
+          // OpenAI: lista modelos (requer auth valida)
           const oaiRes = await fetch('https://api.openai.com/v1/models', {
-            headers: { 'Authorization': `Bearer ${creds.api_key}` }
+            headers: { 'Authorization': `Bearer ${apiKey}` }
           });
           success = oaiRes.ok;
           break;
 
         case 'elevenlabs':
+          // ElevenLabs: busca dados do usuario
           const elRes = await fetch('https://api.elevenlabs.io/v1/user', {
-            headers: { 'xi-api-key': creds.api_key }
+            headers: { 'xi-api-key': apiKey }
           });
           success = elRes.ok;
           break;
 
         case 'freepik':
-          success = creds.api_key?.length > 10;
+          // Freepik: testa listando estilos
+          const fpRes = await fetch('https://api.freepik.com/v1/ai/styles', {
+            headers: {
+              'Accept': 'application/json',
+              'x-freepik-api-key': apiKey
+            }
+          });
+          success = fpRes.ok;
+          break;
+
+        case 'falai':
+          // FAL.ai: verifica formato da key (nao tem endpoint de teste simples)
+          success = apiKey.length > 20 && (apiKey.includes('-') || apiKey.includes(':'));
+          if (!success) {
+            toast.error('Formato de API Key FAL.ai invalido');
+          }
+          break;
+
+        case 'asaas':
+          // Asaas: busca info da conta
+          const env = creds.environment === 'sandbox' ? 'sandbox' : 'www';
+          const asaasRes = await fetch(`https://${env}.asaas.com/api/v3/myAccount`, {
+            headers: { 'access_token': apiKey }
+          });
+          success = asaasRes.ok;
+          break;
+
+        case 'zapi':
+          // Z-API: verificar se preencheu os campos
+          if (!creds.instance_id || !creds.token) {
+            toast.error('Preencha Instance ID e Token');
+            setTestingProvider(null);
+            return;
+          }
+          // Testa status da instancia
+          const zapiRes = await fetch(
+            `https://api.z-api.io/instances/${creds.instance_id}/token/${creds.token}/status`,
+            { method: 'GET' }
+          );
+          success = zapiRes.ok;
           break;
 
         default:
