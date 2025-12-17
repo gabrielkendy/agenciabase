@@ -134,50 +134,65 @@ export const WorkflowPage = () => {
   const saveDemand = (isDraft: boolean) => {
     const redator = getTeamMember(teamForm.team_redator_id);
     const designer = getTeamMember(teamForm.team_designer_id);
-    
+
+    // Se não é rascunho e tem redator, vai direto para "conteudo"
+    // Se não é rascunho mas não tem redator e tem designer, vai para "design"
+    // Caso contrário fica em "rascunho"
+    let initialStatus: DemandStatus = 'rascunho';
+    if (!isDraft) {
+      if (teamForm.team_redator_id) {
+        initialStatus = 'conteudo';
+      } else if (teamForm.team_designer_id) {
+        initialStatus = 'design';
+      }
+    }
+
     const demandData = {
-      user_id: '1', 
-      client_id: form.client_id, 
-      title: form.title, 
-      briefing: form.briefing, 
+      user_id: '1',
+      client_id: form.client_id,
+      title: form.title,
+      briefing: form.briefing,
       caption: form.caption || undefined,
-      hashtags: form.hashtags || undefined, 
-      status: 'rascunho' as DemandStatus, 
-      content_type: form.content_type, 
+      hashtags: form.hashtags || undefined,
+      status: initialStatus,
+      content_type: form.content_type,
       channels: form.channels,
-      media: form.media, 
-      tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean), 
+      media: form.media,
+      tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
       scheduled_date: form.scheduled_date || undefined,
-      scheduled_time: form.scheduled_time || undefined, 
-      
+      scheduled_time: form.scheduled_time || undefined,
+
       // Team
       team_redator_id: teamForm.team_redator_id || undefined,
       team_redator_name: redator?.name,
       team_designer_id: teamForm.team_designer_id || undefined,
       team_designer_name: designer?.name,
-      
+
       // Approvers
       internal_approvers: teamForm.internal_approvers,
       skip_internal_approval: teamForm.skip_internal_approval,
       external_approvers: teamForm.external_approvers,
       skip_external_approval: teamForm.skip_external_approval,
-      
+
       approval_status: 'pending' as const,
       approval_link_sent: false,
-      auto_schedule: form.auto_schedule, 
+      auto_schedule: form.auto_schedule,
       created_by_ai: false,
       is_draft: isDraft,
       comments: [],
     };
-    
-    if (editingDemand) { 
-      updateDemand(editingDemand.id, demandData); 
-      toast.success('Demanda atualizada!'); 
-    } else { 
-      addDemand(demandData); 
-      toast.success(isDraft ? 'Rascunho salvo!' : 'Demanda criada!'); 
+
+    if (editingDemand) {
+      updateDemand(editingDemand.id, demandData);
+      toast.success('Demanda atualizada!');
+    } else {
+      addDemand(demandData);
+      const statusMsg = initialStatus === 'conteudo' ? 'enviada para Redator' :
+                       initialStatus === 'design' ? 'enviada para Designer' :
+                       isDraft ? 'salva como rascunho' : 'criada';
+      toast.success(`Demanda ${statusMsg}!`);
     }
-    setShowModal(false); 
+    setShowModal(false);
     resetForm();
   };
 
@@ -1015,50 +1030,82 @@ export const WorkflowPage = () => {
                         </div>
                       </div>
                       <div className="divide-y divide-gray-700">
-                        {teamMembers.filter((m) => m.is_active).map((member) => (
-                          <div key={member.id} className="flex items-center justify-between p-3 hover:bg-gray-700/30">
-                            <div className="flex items-center gap-3">
-                              <input 
-                                type="checkbox" 
-                                checked={teamForm.team_redator_id === member.id || teamForm.team_designer_id === member.id}
-                                onChange={() => {}}
-                                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-orange-500 focus:ring-orange-500"
-                              />
-                              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-sm">
-                                {member.name.charAt(0)}
+                        {teamMembers.filter((m) => m.is_active).map((member) => {
+                          const isSelected = teamForm.team_redator_id === member.id || teamForm.team_designer_id === member.id;
+                          return (
+                            <div key={member.id} className="flex items-center justify-between p-3 hover:bg-gray-700/30">
+                              <div className="flex items-center gap-3">
+                                <label className="flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        // Se não tem redator, define como redator
+                                        if (!teamForm.team_redator_id) {
+                                          setTeamForm({ ...teamForm, team_redator_id: member.id });
+                                        } else if (!teamForm.team_designer_id) {
+                                          // Se já tem redator mas não designer, define como designer
+                                          setTeamForm({ ...teamForm, team_designer_id: member.id });
+                                        }
+                                      } else {
+                                        // Remove de ambos os campos se desmarcado
+                                        setTeamForm({
+                                          ...teamForm,
+                                          team_redator_id: teamForm.team_redator_id === member.id ? '' : teamForm.team_redator_id,
+                                          team_designer_id: teamForm.team_designer_id === member.id ? '' : teamForm.team_designer_id
+                                        });
+                                      }
+                                    }}
+                                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-orange-500 focus:ring-orange-500 cursor-pointer"
+                                  />
+                                </label>
+                                <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-sm">
+                                  {member.name.charAt(0)}
+                                </div>
+                                <span className="text-white text-sm">{member.name}</span>
                               </div>
-                              <span className="text-white text-sm">{member.name}</span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setTeamForm({ ...teamForm, team_redator_id: teamForm.team_redator_id === member.id ? '' : member.id });
+                                  }}
+                                  className={clsx(
+                                    'px-3 py-1 rounded-lg text-xs transition',
+                                    teamForm.team_redator_id === member.id
+                                      ? 'bg-blue-500 text-white'
+                                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                  )}
+                                >
+                                  Redator
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setTeamForm({ ...teamForm, team_designer_id: teamForm.team_designer_id === member.id ? '' : member.id });
+                                  }}
+                                  className={clsx(
+                                    'px-3 py-1 rounded-lg text-xs transition',
+                                    teamForm.team_designer_id === member.id
+                                      ? 'bg-purple-500 text-white'
+                                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                  )}
+                                >
+                                  Designer
+                                </button>
+                                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                                  Acesso total
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <button 
-                                onClick={() => setTeamForm({ ...teamForm, team_redator_id: teamForm.team_redator_id === member.id ? '' : member.id })}
-                                className={clsx(
-                                  'px-3 py-1 rounded-lg text-xs transition',
-                                  teamForm.team_redator_id === member.id 
-                                    ? 'bg-blue-500 text-white' 
-                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                                )}
-                              >
-                                Redator
-                              </button>
-                              <button 
-                                onClick={() => setTeamForm({ ...teamForm, team_designer_id: teamForm.team_designer_id === member.id ? '' : member.id })}
-                                className={clsx(
-                                  'px-3 py-1 rounded-lg text-xs transition',
-                                  teamForm.team_designer_id === member.id 
-                                    ? 'bg-purple-500 text-white' 
-                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                                )}
-                              >
-                                Designer
-                              </button>
-                              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
-                                Acesso total
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -1259,23 +1306,26 @@ export const WorkflowPage = () => {
 
             {/* Modal Footer */}
             <div className="p-6 border-t border-gray-800 flex items-center justify-between">
-              <button 
-                onClick={() => { setShowModal(false); resetForm(); }} 
+              <button
+                type="button"
+                onClick={() => { setShowModal(false); resetForm(); }}
                 className="text-gray-400 hover:text-white flex items-center gap-2"
               >
-                ← Voltar
+                ← Cancelar
               </button>
               <div className="flex gap-3">
                 {modalStep === 'content' && (
                   <>
-                    <button 
-                      onClick={handleSaveDraft} 
+                    <button
+                      type="button"
+                      onClick={handleSaveDraft}
                       className="px-6 py-2 border border-gray-600 text-gray-300 rounded-xl hover:border-gray-500 transition flex items-center gap-2"
                     >
                       <Icons.Save size={16} /> Salvar como rascunho
                     </button>
-                    <button 
-                      onClick={handleNextStep} 
+                    <button
+                      type="button"
+                      onClick={handleNextStep}
                       className="px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition flex items-center gap-2"
                     >
                       Avançar <Icons.ChevronRight size={16} />
@@ -1284,14 +1334,19 @@ export const WorkflowPage = () => {
                 )}
                 {modalStep === 'team' && (
                   <>
-                    <button 
-                      onClick={handlePrevStep} 
+                    <button
+                      type="button"
+                      onClick={handlePrevStep}
                       className="px-6 py-2 border border-gray-600 text-gray-300 rounded-xl hover:border-gray-500 transition flex items-center gap-2"
                     >
                       <Icons.ChevronLeft size={16} /> Voltar
                     </button>
-                    <button 
-                      onClick={handleFinalize} 
+                    <button
+                      type="button"
+                      onClick={() => {
+                        console.log('Finalizando demanda...');
+                        handleFinalize();
+                      }}
                       className="px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition flex items-center gap-2"
                     >
                       Finalizar <Icons.Check size={16} />

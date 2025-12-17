@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(npm run build:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: Mega Update - Workflow mLabs + Chat Projetos + Freepik API\n\n- ContentCreatorPage: Nova tela de criação de conteúdo estilo mLabs\n  - Preview do post em tempo real\n  - Upload de mídia com preview\n  - Configurações avançadas do Instagram\n  - Geração de legenda com IA\n  - Seleção de canais e agendamento\n  \n- ChatPage: Sistema de projetos estilo ChatGPT\n  - Projetos com cores e ícones personalizados\n  - Organização de conversas por projeto\n  - Upload de fotos, vídeos e arquivos\n  - Menções com @ para agentes e membros\n  - Modal de participantes\n  \n- CreatorStudio: Integração com Freepik API\n  - Serviço freepikService para gerar imagens\n  - Estilos artísticos (foto, anime, 3D, etc)\n  - Tamanhos para diferentes formatos\n  - Configuração de API key nas Settings\n  \n- Settings: Nova seção para Freepik Mystic API\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(cat:*)"
     ]
   }
 }
