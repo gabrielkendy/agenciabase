@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { Sidebar } from './components/Sidebar';
 import { DashboardPage } from './pages/DashboardPage';
 import { ChatPage } from './pages/ChatPage';
@@ -24,15 +25,58 @@ import { PlansPage } from './pages/super-admin/PlansPage';
 import { GlobalIntegrationsPage } from './pages/super-admin/GlobalIntegrationsPage';
 import { Icons } from './components/Icons';
 import { useStore } from './store';
+import { secureSession, auditLog } from './lib/security';
 
 // Componente para proteger rotas
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { currentUser } = useStore();
-  
+  const { currentUser, logout } = useStore();
+
+  // Verificar sessão ativa
+  useEffect(() => {
+    if (currentUser && !secureSession.checkActivity()) {
+      toast.error('Sessão expirada por inatividade');
+      auditLog.log(currentUser.id, 'SESSION_EXPIRED', 'auth', 'Sessão expirada por inatividade');
+      logout();
+    }
+  }, [currentUser, logout]);
+
   if (!currentUser) {
     return <Navigate to="/login" replace />;
   }
-  
+
+  return <>{children}</>;
+};
+
+// Componente para proteger rotas de Super Admin
+const SuperAdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const { currentUser } = useStore();
+
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (currentUser.role !== 'super_admin') {
+    toast.error('Acesso negado: apenas Super Admin');
+    auditLog.log(currentUser.id, 'ACCESS_DENIED', 'super-admin', `Tentativa de acesso não autorizado`);
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// Componente para proteger rotas de Admin
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const { currentUser } = useStore();
+
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (currentUser.role !== 'super_admin' && currentUser.role !== 'admin') {
+    toast.error('Acesso negado: apenas Administradores');
+    return <Navigate to="/" replace />;
+  }
+
   return <>{children}</>;
 };
 
@@ -133,16 +177,16 @@ function AppContent() {
           <Route path="/agents" element={<ProtectedRoute><AgentsPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/studio" element={<ProtectedRoute><CreatorStudioPage /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+          <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
           <Route path="/content/:demandId" element={<ProtectedRoute><ContentCreatorPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
 
-          {/* Super Admin Routes */}
-          <Route path="/super-admin" element={<ProtectedRoute><SuperAdminDashboard /></ProtectedRoute>} />
-          <Route path="/super-admin/dashboard" element={<ProtectedRoute><SuperAdminDashboard /></ProtectedRoute>} />
-          <Route path="/super-admin/tenants" element={<ProtectedRoute><TenantsPage /></ProtectedRoute>} />
-          <Route path="/super-admin/plans" element={<ProtectedRoute><PlansPage /></ProtectedRoute>} />
-          <Route path="/super-admin/integrations" element={<ProtectedRoute><GlobalIntegrationsPage /></ProtectedRoute>} />
+          {/* Super Admin Routes - PROTEGIDAS */}
+          <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />
+          <Route path="/super-admin/dashboard" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />
+          <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsPage /></SuperAdminRoute>} />
+          <Route path="/super-admin/plans" element={<SuperAdminRoute><PlansPage /></SuperAdminRoute>} />
+          <Route path="/super-admin/integrations" element={<SuperAdminRoute><GlobalIntegrationsPage /></SuperAdminRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
