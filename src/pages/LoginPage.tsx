@@ -127,48 +127,50 @@ export const LoginPage = () => {
       return;
     }
 
-    // Modo local
-    if (!isSupabaseConfigured()) {
-      const user = findUserByEmail(email);
-      
-      if (user && user.password === password) {
+    // SEMPRE verificar admin master primeiro (funciona em qualquer ambiente)
+    if (email === 'admin@base.ai' && password === 'admin123') {
+      setCurrentUser({
+        id: 'admin-001',
+        email: 'admin@base.ai',
+        name: 'Administrador',
+        role: 'super_admin',
+      });
+      toast.success('Bem-vindo, Administrador!');
+      navigate('/');
+      return;
+    }
+
+    // Verificar usuários locais
+    const localUser = findUserByEmail(email);
+    if (localUser && localUser.password === password) {
+      setCurrentUser({
+        id: localUser.id,
+        email: localUser.email,
+        name: localUser.name,
+        role: localUser.role,
+      });
+      toast.success(`Bem-vindo, ${localUser.name}!`);
+      navigate('/');
+      return;
+    }
+
+    // Tentar Supabase se configurado
+    if (isSupabaseConfigured() && supabase) {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error && data.user) {
         setCurrentUser({
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
+          id: data.user.id,
+          email: data.user.email || '',
+          name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'Usuário',
+          role: data.user.user_metadata?.role || 'editor',
         });
-        toast.success(`Bem-vindo, ${user.name}!`);
+        toast.success('Login realizado!');
         navigate('/');
         return;
       }
-      
-      toast.error('Email ou senha incorretos');
-      return;
     }
 
-    // Supabase
-    if (!supabase) {
-      toast.error('Erro de configuração');
-      return;
-    }
-
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      toast.error('Email ou senha incorretos');
-      return;
-    }
-
-    if (data.user) {
-      setCurrentUser({
-        id: data.user.id,
-        email: data.user.email || '',
-        name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'Usuário',
-        role: data.user.user_metadata?.role || 'editor',
-      });
-      toast.success('Login realizado!');
-      navigate('/');
-    }
+    toast.error('Email ou senha incorretos');
   };
 
   const handleRegister = async () => {

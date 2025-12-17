@@ -8,7 +8,9 @@
       "Bash(cat:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nfix: Corrigir workflow - checkboxes, finalização e ordem das fases\n\n- Checkboxes da equipe agora funcionam corretamente\n  - onChange com lógica para atribuir redator/designer\n  - type=\"button\" nos botões de função\n  - Labels clicáveis\n  \n- Botão Finalizar não trava mais\n  - Adicionado type=\"button\" em todos os botões do footer\n  - Fluxo de finalização com log para debug\n  \n- Lógica de status inicial corrigida\n  - Se tem redator: vai para \"conteudo\"\n  - Se só tem designer: vai para \"design\"  \n  - Se rascunho: permanece em \"rascunho\"\n  \n- Mensagens de toast mais descritivas\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(npm install:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(powershell -Command \"$timestamp = Get-Date -Format ''yyyyMMdd_HHmmss''; $excludeDirs = @(''node_modules'', ''.git'', ''dist''); Get-ChildItem -Recurse | Where-Object { $exclude = $false; foreach($dir in $excludeDirs) { if($_FullName -like \"\"*\\$dir\\*\"\" -or $_FullName -like \"\"*\\$dir\"\") { $exclude = $true; break } }; -not $exclude } | Compress-Archive -DestinationPath \"\"C:\\Users\\Gabriel\\Downloads\\backup_agenciabase_$timestamp.zip\"\" -Force; Write-Host \"\"Backup criado: C:\\Users\\Gabriel\\Downloads\\backup_agenciabase_$timestamp.zip\"\"\")",
+      "Bash(powershell:*)"
     ]
   }
 }
