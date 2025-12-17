@@ -10,11 +10,70 @@ import { WORKFLOW_COLUMNS, ChatbotConfig, ContractTemplate } from '../types';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 
-type AdminTab = 'overview' | 'financial' | 'team' | 'notifications' | 'contracts' | 'chatbot' | 'settings';
+type AdminTab = 'overview' | 'financial' | 'team' | 'integrations' | 'notifications' | 'contracts' | 'chatbot' | 'settings';
+
+// API Integration configs
+const AI_INTEGRATIONS = [
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    icon: '✨',
+    color: 'blue',
+    description: 'Chat IA, geração de texto e análise',
+    configKey: 'gemini_key' as const,
+    docs: 'https://ai.google.dev/tutorials/setup'
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    icon: '🤖',
+    color: 'green',
+    description: 'GPT-4, DALL-E, Whisper',
+    configKey: 'openai_key' as const,
+    docs: 'https://platform.openai.com/api-keys'
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    icon: '🌐',
+    color: 'purple',
+    description: 'Acesso a múltiplos modelos (inclui gratuitos)',
+    configKey: 'openrouter_key' as const,
+    docs: 'https://openrouter.ai/keys'
+  },
+  {
+    id: 'freepik',
+    name: 'Freepik Mystic',
+    icon: '🎨',
+    color: 'pink',
+    description: 'Geração de imagens com IA',
+    configKey: 'freepik_key' as const,
+    docs: 'https://www.freepik.com/api'
+  },
+  {
+    id: 'elevenlabs',
+    name: 'ElevenLabs',
+    icon: '🎙️',
+    color: 'yellow',
+    description: 'Geração de voz e narração',
+    configKey: 'elevenlabs_key' as const,
+    docs: 'https://elevenlabs.io/app/settings/api-keys'
+  },
+  {
+    id: 'falai',
+    name: 'FAL.ai',
+    icon: '🎬',
+    color: 'orange',
+    description: 'Geração de vídeos com IA',
+    configKey: 'falai_key' as const,
+    docs: 'https://fal.ai/dashboard/keys'
+  },
+];
 
 export const AdminPage = () => {
   const { demands, clients, teamMembers, apiConfig, setApiConfig } = useStore();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(false);
   
   // Financial
@@ -132,6 +191,7 @@ export const AdminPage = () => {
 
   const tabs: { id: AdminTab; label: string; icon: any }[] = [
     { id: 'overview', label: 'Visão Geral', icon: Icons.Chart },
+    { id: 'integrations', label: 'Integrações IA', icon: Icons.Sparkles },
     { id: 'financial', label: 'Financeiro', icon: Icons.DollarSign },
     { id: 'team', label: 'Equipe', icon: Icons.Users },
     { id: 'notifications', label: 'Notificações', icon: Icons.Bell },
@@ -191,6 +251,155 @@ export const AdminPage = () => {
                 <h3 className="text-lg font-semibold text-white mb-4">Receita Mensal Prevista</h3>
                 <p className="text-4xl font-bold text-green-400">R$ {metrics.monthlyRevenue.toLocaleString('pt-BR')}</p>
                 <p className="text-sm text-gray-500 mt-2">Baseado em {metrics.activeClients} clientes ativos</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Integrations */}
+        {activeTab === 'integrations' && (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 rounded-xl p-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                  <Icons.Sparkles size={28} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Integrações de IA</h2>
+                  <p className="text-gray-400 text-sm">Configure suas API Keys para usar os recursos de IA</p>
+                </div>
+              </div>
+            </div>
+
+            {/* API Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {AI_INTEGRATIONS.map((integration) => {
+                const isConfigured = !!apiConfig[integration.configKey];
+                const colorClasses: Record<string, string> = {
+                  blue: 'from-blue-500/20 to-blue-600/10 border-blue-500/30',
+                  green: 'from-green-500/20 to-green-600/10 border-green-500/30',
+                  purple: 'from-purple-500/20 to-purple-600/10 border-purple-500/30',
+                  pink: 'from-pink-500/20 to-pink-600/10 border-pink-500/30',
+                  yellow: 'from-yellow-500/20 to-yellow-600/10 border-yellow-500/30',
+                  orange: 'from-orange-500/20 to-orange-600/10 border-orange-500/30',
+                };
+
+                return (
+                  <div
+                    key={integration.id}
+                    className={`bg-gradient-to-br ${colorClasses[integration.color]} border rounded-xl p-5 transition hover:scale-[1.02]`}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl">{integration.icon}</span>
+                        <div>
+                          <h3 className="text-white font-semibold">{integration.name}</h3>
+                          <p className="text-xs text-gray-400">{integration.description}</p>
+                        </div>
+                      </div>
+                      {isConfigured ? (
+                        <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full flex items-center gap-1">
+                          <Icons.Check size={12} /> Ativo
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 bg-gray-500/20 text-gray-400 text-xs rounded-full">
+                          Não configurado
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <input
+                          type={showApiKey[integration.id] ? 'text' : 'password'}
+                          value={apiConfig[integration.configKey] || ''}
+                          onChange={(e) => setApiConfig({ [integration.configKey]: e.target.value })}
+                          placeholder={`Cole sua API Key do ${integration.name}`}
+                          className="w-full bg-gray-800/80 border border-gray-700 rounded-lg px-4 py-2.5 text-white text-sm focus:border-purple-500 focus:outline-none pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKey(prev => ({ ...prev, [integration.id]: !prev[integration.id] }))}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                        >
+                          {showApiKey[integration.id] ? <Icons.EyeOff size={16} /> : <Icons.Eye size={16} />}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <a
+                          href={integration.docs}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                        >
+                          <Icons.ExternalLink size={12} />
+                          Obter API Key
+                        </a>
+                        {apiConfig[integration.configKey] && (
+                          <button
+                            onClick={() => {
+                              setApiConfig({ [integration.configKey]: '' });
+                              toast.success(`${integration.name} desconectado`);
+                            }}
+                            className="text-xs text-red-400 hover:text-red-300"
+                          >
+                            Remover
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Status Summary */}
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Icons.Activity size={20} className="text-purple-400" />
+                Status das Integrações
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {AI_INTEGRATIONS.map((integration) => {
+                  const isConfigured = !!apiConfig[integration.configKey];
+                  return (
+                    <div
+                      key={integration.id}
+                      className={clsx(
+                        'p-3 rounded-lg text-center transition',
+                        isConfigured ? 'bg-green-500/10 border border-green-500/30' : 'bg-gray-900/50 border border-gray-700'
+                      )}
+                    >
+                      <span className="text-2xl">{integration.icon}</span>
+                      <p className="text-xs text-gray-300 mt-1">{integration.name}</p>
+                      <p className={clsx('text-xs mt-1', isConfigured ? 'text-green-400' : 'text-gray-500')}>
+                        {isConfigured ? '✓ Ativo' : '○ Inativo'}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Usage Tips */}
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Icons.Info size={20} className="text-blue-400" />
+                Dicas de Uso
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="space-y-2">
+                  <p className="text-gray-300"><strong className="text-purple-400">Gemini:</strong> Ideal para chat e geração de texto. API gratuita com limite generoso.</p>
+                  <p className="text-gray-300"><strong className="text-green-400">OpenAI:</strong> GPT-4o para texto avançado. Use o Assistant ID para agentes personalizados.</p>
+                  <p className="text-gray-300"><strong className="text-purple-400">OpenRouter:</strong> Acesso a modelos gratuitos como Llama, Mistral e Gemma.</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-gray-300"><strong className="text-pink-400">Freepik:</strong> Gere imagens com Mystic. Suporta estilos e referências.</p>
+                  <p className="text-gray-300"><strong className="text-yellow-400">ElevenLabs:</strong> Vozes realistas em português. Ideal para narrações.</p>
+                  <p className="text-gray-300"><strong className="text-orange-400">FAL.ai:</strong> Gere vídeos a partir de imagens ou texto.</p>
+                </div>
               </div>
             </div>
           </div>

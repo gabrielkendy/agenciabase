@@ -544,6 +544,9 @@ export const useStore = create<StoreState>()(
         zapi_instance_id: '',
         zapi_token: '',
         zapi_client_token: '',
+        freepik_key: 'FPSX3195180d1b1cd6593b4d3167d2d3be44',
+        elevenlabs_key: '',
+        falai_key: '',
       },
       setApiConfig: (config) => set((state) => ({
         apiConfig: { ...state.apiConfig, ...config }

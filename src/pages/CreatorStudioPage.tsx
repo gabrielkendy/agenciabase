@@ -1,252 +1,255 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { useStore } from '../store';
-import { useStudioStore } from '../store/studioStore';
-import { sendMessageToGemini } from '../services/geminiService';
-import { freepikService, FREEPIK_STYLES, FREEPIK_SIZES } from '../services/freepikService';
+import { freepikService, FREEPIK_STYLES, FREEPIK_SIZES, FREEPIK_COLORS, FreepikGenerationRequest } from '../services/freepikService';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
+import { v4 as uuidv4 } from 'uuid';
 
-interface ScenePrompt {
+type StudioTab = 'image' | 'video' | 'audio';
+
+interface GeneratedItem {
   id: string;
-  number: number;
-  text: string;
-  imageUrl?: string;
-  videoUrl?: string;
-  isGenerating: boolean;
-  approved: boolean;
+  type: 'image' | 'video' | 'audio';
+  prompt: string;
+  url: string;
+  thumbnail?: string;
+  status: 'generating' | 'completed' | 'error';
+  error?: string;
+  settings: Record<string, any>;
+  createdAt: string;
 }
 
+// ElevenLabs Voices
+const ELEVENLABS_VOICES = [
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', lang: 'pt-BR', gender: 'Masculino' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', lang: 'en', gender: 'Feminino' },
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', lang: 'en', gender: 'Feminino' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', lang: 'en', gender: 'Masculino' },
+  { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam', lang: 'en', gender: 'Masculino' },
+  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', lang: 'en', gender: 'Feminino' },
+];
+
+// FAL.ai Models
+const FALAI_MODELS = [
+  { id: 'fal-ai/fast-svd-lcm', name: 'Fast SVD (LCM)', description: 'Video rapido a partir de imagem' },
+  { id: 'fal-ai/stable-video', name: 'Stable Video', description: 'Video estavel de alta qualidade' },
+  { id: 'fal-ai/animatediff', name: 'AnimateDiff', description: 'Animacao de imagens estaticas' },
+];
+
 export const CreatorStudioPage = () => {
-  const { apiConfig, agents } = useStore();
-  const {
-    script, setScript, scriptApproved, approveScript, rejectScript,
-    narrationUrl, setNarrationUrl, narrationApproved, approveNarration,
-    isGeneratingScript, setIsGeneratingScript,
-    isGeneratingNarration, setIsGeneratingNarration,
-    isGeneratingImages, setIsGeneratingImages,
-    resetStudio,
-  } = useStudioStore();
+  const { apiConfig } = useStore();
+  const [activeTab, setActiveTab] = useState<StudioTab>('image');
 
-  // Project state
-  const [projectName, setProjectName] = useState('Novo Projeto');
-  const [currentStep, setCurrentStep] = useState(1);
+  // Generation history (persisted)
+  const [history, setHistory] = useState<GeneratedItem[]>(() => {
+    const saved = localStorage.getItem('studio_history');
+    return saved ? JSON.parse(saved) : [];
+  });
 
-  // Chat with agent
-  const [agentInput, setAgentInput] = useState('');
-  const [agentMessages, setAgentMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+  // Image generation state
+  const [imagePrompt, setImagePrompt] = useState('');
+  const [imageStyle, setImageStyle] = useState('photo');
+  const [imageSize, setImageSize] = useState('square_1_1');
+  const [imageColor, setImageColor] = useState<string | undefined>(undefined);
+  const [negativePrompt, setNegativePrompt] = useState('blurry, ugly, distorted, low quality, watermark, text');
+  const [numImages, setNumImages] = useState(1);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
-  // Scene prompts
-  const [scenePrompts, setScenePrompts] = useState<ScenePrompt[]>([]);
+  // Video generation state
+  const [videoPrompt, setVideoPrompt] = useState('');
+  const [videoModel, setVideoModel] = useState('fal-ai/fast-svd-lcm');
+  const [videoSourceImage, setVideoSourceImage] = useState<string | null>(null);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
 
-  // Image generation options
-  const [selectedStyle, setSelectedStyle] = useState('photo');
-  const [selectedSize, setSelectedSize] = useState('widescreen_16_9');
-  const [selectedColor] = useState<string | undefined>(undefined);
-  const [negativePrompt] = useState('blurry, ugly, distorted, low quality, watermark, text');
+  // Audio generation state
+  const [audioText, setAudioText] = useState('');
+  const [audioVoice, setAudioVoice] = useState('onwK4e9ZLuTAKqWW03F9');
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
 
-  // Narration settings
-  const [voiceId] = useState('EXAVITQu4vr4xnSDxMaL'); // Sarah
+  // Reference image for style transfer
+  const [referenceImage, setReferenceImage] = useState<string | null>(null);
 
-  // Refs
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto scroll chat
+  // Save history to localStorage
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [agentMessages]);
+    localStorage.setItem('studio_history', JSON.stringify(history));
+  }, [history]);
 
-  // Available agents (video/studio focused)
-  const studioAgents = agents.filter(a => a.is_active);
-
-  // Steps for the workflow
-  const steps = [
-    { id: 1, name: 'Roteiro', icon: '📝' },
-    { id: 2, name: 'Prompts', icon: '💡' },
-    { id: 3, name: 'Imagens', icon: '🖼️' },
-    { id: 4, name: 'Vídeos', icon: '🎬' },
-    { id: 5, name: 'Exportar', icon: '📦' },
-  ];
-
-  // Chat with agent to generate script
-  const sendToAgent = async () => {
-    if (!agentInput.trim() || isGeneratingScript) return;
-
-    const userMessage = agentInput;
-    setAgentInput('');
-    setAgentMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-    setIsGeneratingScript(true);
-
-    try {
-      const agent = agents.find(a => a.id === selectedAgentId) || agents[0];
-      const systemPrompt = `${agent?.system_prompt || 'Você é um especialista em criar roteiros para vídeos curtos (reels, shorts).'}
-
-TAREFA: Crie um roteiro detalhado para um vídeo com exatamente 12 cenas.
-Cada cena deve ter:
-- Duração aproximada de 2-3 segundos
-- Descrição visual detalhada
-- Texto de narração
-
-FORMATO DE RESPOSTA (siga exatamente):
-CENA 1:
-Visual: [descrição detalhada do que aparece na tela]
-Narração: [texto que será falado]
-
-CENA 2:
-...
-
-Continue até a CENA 12.`;
-
-      let response = '';
-
-      if (apiConfig.gemini_key) {
-        response = await sendMessageToGemini(userMessage, systemPrompt, apiConfig.gemini_key);
-      } else {
-        throw new Error('Configure uma API Key nas configurações');
-      }
-
-      setAgentMessages(prev => [...prev, { role: 'assistant', content: response }]);
-      setScript(response);
-
-      // Parse scenes from response
-      parseScriptToScenes(response);
-
-      toast.success('Roteiro gerado com sucesso!');
-    } catch (error: any) {
-      setAgentMessages(prev => [...prev, { role: 'assistant', content: `❌ Erro: ${error.message}` }]);
-      toast.error('Erro ao gerar roteiro');
-    } finally {
-      setIsGeneratingScript(false);
-    }
+  // Add item to history
+  const addToHistory = (item: GeneratedItem) => {
+    setHistory(prev => [item, ...prev]);
   };
 
-  // Parse script into 12 scenes
-  const parseScriptToScenes = (scriptText: string) => {
-    const scenes: ScenePrompt[] = [];
-    const sceneRegex = /CENA\s*(\d+):\s*(?:Visual:|VISUAL:)?\s*([^]*?)(?:Narração:|NARRAÇÃO:|Narration:)\s*([^]*?)(?=CENA\s*\d+:|$)/gi;
-
-    let match;
-    while ((match = sceneRegex.exec(scriptText)) !== null) {
-      const number = parseInt(match[1]);
-      const visual = match[2].trim();
-
-      scenes.push({
-        id: `scene_${number}`,
-        number,
-        text: visual,
-        isGenerating: false,
-        approved: false,
-      });
-    }
-
-    // If parsing failed, create 12 generic scenes
-    if (scenes.length === 0) {
-      for (let i = 1; i <= 12; i++) {
-        scenes.push({
-          id: `scene_${i}`,
-          number: i,
-          text: `Cena ${i} - Prompt para gerar imagem`,
-          isGenerating: false,
-          approved: false,
-        });
-      }
-    }
-
-    setScenePrompts(scenes);
+  // Update item in history
+  const updateHistoryItem = (id: string, updates: Partial<GeneratedItem>) => {
+    setHistory(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
   };
 
-  // Update a scene prompt
-  const updateScenePrompt = (id: string, text: string) => {
-    setScenePrompts(prev => prev.map(s => s.id === id ? { ...s, text } : s));
+  // Delete item from history
+  const deleteHistoryItem = (id: string) => {
+    setHistory(prev => prev.filter(item => item.id !== id));
   };
 
-  // Generate image for a single scene
-  const generateSceneImage = async (sceneId: string) => {
+  // Generate Image with Freepik
+  const generateImage = async () => {
+    if (!imagePrompt.trim()) {
+      toast.error('Digite um prompt para gerar a imagem');
+      return;
+    }
     if (!apiConfig.freepik_key) {
-      toast.error('Configure a API Key da Freepik nas configurações');
+      toast.error('Configure a API Key da Freepik em Admin > Integracoes');
       return;
     }
 
-    const scene = scenePrompts.find(s => s.id === sceneId);
-    if (!scene) return;
+    setIsGeneratingImage(true);
+    const itemId = uuidv4();
 
-    setScenePrompts(prev => prev.map(s => s.id === sceneId ? { ...s, isGenerating: true } : s));
+    // Add placeholder to history
+    addToHistory({
+      id: itemId,
+      type: 'image',
+      prompt: imagePrompt,
+      url: '',
+      status: 'generating',
+      settings: { style: imageStyle, size: imageSize, color: imageColor, negative: negativePrompt },
+      createdAt: new Date().toISOString(),
+    });
 
     try {
       freepikService.setApiKey(apiConfig.freepik_key);
 
-      const urls = await freepikService.generateAndWait({
-        prompt: scene.text,
+      const request: FreepikGenerationRequest = {
+        prompt: imagePrompt,
         negative_prompt: negativePrompt,
         guidance_scale: 7.5,
-        num_images: 1,
-        image: {
-          size: selectedSize as any,
-        },
+        num_images: numImages,
+        image: { size: imageSize as any },
         styling: {
-          style: selectedStyle as any,
-          color: selectedColor as any,
+          style: imageStyle as any,
+          color: imageColor as any,
         },
-      });
+      };
+
+      const urls = await freepikService.generateAndWait(request);
 
       if (urls.length > 0) {
-        setScenePrompts(prev => prev.map(s =>
-          s.id === sceneId ? { ...s, imageUrl: urls[0], isGenerating: false, approved: true } : s
-        ));
-        toast.success(`Imagem da Cena ${scene.number} gerada!`);
+        updateHistoryItem(itemId, { url: urls[0], status: 'completed' });
+
+        // If multiple images, add the rest
+        for (let i = 1; i < urls.length; i++) {
+          addToHistory({
+            id: uuidv4(),
+            type: 'image',
+            prompt: imagePrompt,
+            url: urls[i],
+            status: 'completed',
+            settings: { style: imageStyle, size: imageSize, color: imageColor, negative: negativePrompt },
+            createdAt: new Date().toISOString(),
+          });
+        }
+
+        toast.success(`${urls.length} imagem(ns) gerada(s)!`);
+      } else {
+        throw new Error('Nenhuma imagem retornada');
       }
     } catch (error: any) {
-      setScenePrompts(prev => prev.map(s => s.id === sceneId ? { ...s, isGenerating: false } : s));
-      toast.error(`Erro na Cena ${scene.number}: ${error.message}`);
+      updateHistoryItem(itemId, { status: 'error', error: error.message });
+      toast.error(`Erro: ${error.message}`);
+    } finally {
+      setIsGeneratingImage(false);
     }
   };
 
-  // Generate all images
-  const generateAllImages = async () => {
-    if (!apiConfig.freepik_key) {
-      toast.error('Configure a API Key da Freepik nas configurações');
+  // Generate Video with FAL.ai
+  const generateVideo = async () => {
+    if (!videoSourceImage && !videoPrompt.trim()) {
+      toast.error('Adicione uma imagem ou digite um prompt');
+      return;
+    }
+    if (!apiConfig.falai_key) {
+      toast.error('Configure a API Key do FAL.ai em Admin > Integracoes');
       return;
     }
 
-    setIsGeneratingImages(true);
+    setIsGeneratingVideo(true);
+    const itemId = uuidv4();
 
-    for (const scene of scenePrompts) {
-      if (!scene.imageUrl) {
-        await generateSceneImage(scene.id);
-        // Small delay between requests
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    }
-
-    setIsGeneratingImages(false);
-    toast.success('Todas as imagens foram geradas!');
-    setCurrentStep(3);
-  };
-
-  // Generate narration with ElevenLabs
-  const generateNarration = async () => {
-    if (!apiConfig.elevenlabs_key) {
-      toast.error('Configure a API Key do ElevenLabs nas configurações');
-      return;
-    }
-
-    setIsGeneratingNarration(true);
+    addToHistory({
+      id: itemId,
+      type: 'video',
+      prompt: videoPrompt || 'Image to Video',
+      url: '',
+      thumbnail: videoSourceImage || undefined,
+      status: 'generating',
+      settings: { model: videoModel, sourceImage: !!videoSourceImage },
+      createdAt: new Date().toISOString(),
+    });
 
     try {
-      // Extract all narration texts from script
-      const narrationRegex = /(?:Narração:|NARRAÇÃO:|Narration:)\s*([^]*?)(?=CENA\s*\d+:|Visual:|VISUAL:|$)/gi;
-      const narrations: string[] = [];
-      let match;
+      // FAL.ai API call
+      const response = await fetch('https://fal.run/' + videoModel, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Key ${apiConfig.falai_key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image_url: videoSourceImage,
+          prompt: videoPrompt,
+          motion_bucket_id: 127,
+          fps: 7,
+          cond_aug: 0.02,
+        }),
+      });
 
-      while ((match = narrationRegex.exec(script)) !== null) {
-        narrations.push(match[1].trim());
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Erro ao gerar video');
       }
 
-      const fullNarration = narrations.join(' ');
+      const data = await response.json();
+      const videoUrl = data.video?.url || data.video_url;
 
-      // Call ElevenLabs API
-      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      if (videoUrl) {
+        updateHistoryItem(itemId, { url: videoUrl, status: 'completed' });
+        toast.success('Video gerado com sucesso!');
+      } else {
+        throw new Error('URL do video nao retornada');
+      }
+    } catch (error: any) {
+      updateHistoryItem(itemId, { status: 'error', error: error.message });
+      toast.error(`Erro: ${error.message}`);
+    } finally {
+      setIsGeneratingVideo(false);
+    }
+  };
+
+  // Generate Audio with ElevenLabs
+  const generateAudio = async () => {
+    if (!audioText.trim()) {
+      toast.error('Digite o texto para gerar o audio');
+      return;
+    }
+    if (!apiConfig.elevenlabs_key) {
+      toast.error('Configure a API Key do ElevenLabs em Admin > Integracoes');
+      return;
+    }
+
+    setIsGeneratingAudio(true);
+    const itemId = uuidv4();
+
+    addToHistory({
+      id: itemId,
+      type: 'audio',
+      prompt: audioText.substring(0, 100) + (audioText.length > 100 ? '...' : ''),
+      url: '',
+      status: 'generating',
+      settings: { voice: audioVoice, voiceName: ELEVENLABS_VOICES.find(v => v.id === audioVoice)?.name },
+      createdAt: new Date().toISOString(),
+    });
+
+    try {
+      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${audioVoice}`, {
         method: 'POST',
         headers: {
           'Accept': 'audio/mpeg',
@@ -254,7 +257,7 @@ Continue até a CENA 12.`;
           'xi-api-key': apiConfig.elevenlabs_key,
         },
         body: JSON.stringify({
-          text: fullNarration,
+          text: audioText,
           model_id: 'eleven_multilingual_v2',
           voice_settings: {
             stability: 0.5,
@@ -263,392 +266,611 @@ Continue até a CENA 12.`;
         }),
       });
 
-      if (!response.ok) throw new Error('Erro ao gerar narração');
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Erro desconhecido' }));
+        throw new Error(error.detail?.message || error.message || 'Erro ao gerar audio');
+      }
 
       const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
-      setNarrationUrl(audioUrl);
-      toast.success('Narração gerada com sucesso!');
+
+      updateHistoryItem(itemId, { url: audioUrl, status: 'completed' });
+      toast.success('Audio gerado com sucesso!');
     } catch (error: any) {
+      updateHistoryItem(itemId, { status: 'error', error: error.message });
       toast.error(`Erro: ${error.message}`);
     } finally {
-      setIsGeneratingNarration(false);
+      setIsGeneratingAudio(false);
     }
   };
 
-  // Download all images as ZIP
-  const downloadAllAsZip = async () => {
-    const images = scenePrompts.filter(s => s.imageUrl);
-    if (images.length === 0) {
-      toast.error('Nenhuma imagem para baixar');
-      return;
-    }
+  // Handle file upload for reference/source images
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'reference' | 'video') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    // For now, download individually
-    images.forEach((scene) => {
-      if (scene.imageUrl) {
-        const link = document.createElement('a');
-        link.href = scene.imageUrl;
-        link.download = `cena_${scene.number}.png`;
-        link.click();
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (target === 'reference') {
+        setReferenceImage(dataUrl);
+      } else {
+        setVideoSourceImage(dataUrl);
       }
-    });
-
-    toast.success('Download iniciado!');
+    };
+    reader.readAsDataURL(file);
   };
 
-  // Reset everything
-  const handleReset = () => {
-    if (confirm('Tem certeza que deseja resetar o projeto? Isso apagará todo o progresso.')) {
-      resetStudio();
-      setAgentMessages([]);
-      setScenePrompts([]);
-      setCurrentStep(1);
-      setProjectName('Novo Projeto');
-      toast.success('Projeto resetado!');
+  // Use generated image for video
+  const useImageForVideo = (imageUrl: string) => {
+    setVideoSourceImage(imageUrl);
+    setActiveTab('video');
+    toast.success('Imagem adicionada para gerar video');
+  };
+
+  // Download file
+  const downloadFile = async (url: string, filename: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // If fetch fails, open in new tab
+      window.open(url, '_blank');
     }
   };
+
+  // Filter history by type
+  const filteredHistory = activeTab === 'image'
+    ? history.filter(h => h.type === 'image')
+    : activeTab === 'video'
+    ? history.filter(h => h.type === 'video')
+    : history.filter(h => h.type === 'audio');
 
   return (
-    <div className="h-full flex flex-col bg-gray-950">
-      {/* Header */}
-      <header className="h-14 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-6">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
-            <Icons.Film className="text-white" size={20} />
-          </div>
-          <input
-            type="text"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            className="bg-transparent text-white font-bold text-lg focus:outline-none border-b border-transparent hover:border-gray-700 focus:border-orange-500 transition"
-          />
-        </div>
-
-        {/* Steps Progress */}
-        <div className="hidden lg:flex items-center gap-2">
-          {steps.map((step) => (
-            <div
-              key={step.id}
-              onClick={() => setCurrentStep(step.id)}
-              className={clsx(
-                'flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition',
-                currentStep === step.id
-                  ? 'bg-orange-500 text-white'
-                  : currentStep > step.id
-                  ? 'bg-green-500/20 text-green-400'
-                  : 'bg-gray-800 text-gray-500'
-              )}
-            >
-              <span>{step.icon}</span>
-              <span className="text-sm font-medium">{step.name}</span>
+    <div className="h-full flex bg-gray-950">
+      {/* Left Sidebar - Controls */}
+      <div className="w-96 border-r border-gray-800 flex flex-col bg-gray-900/50">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-pink-500 to-purple-600 rounded-xl flex items-center justify-center">
+              <Icons.Wand2 className="text-white" size={20} />
             </div>
-          ))}
+            <div>
+              <h1 className="text-lg font-bold text-white">AI Studio</h1>
+              <p className="text-xs text-gray-500">Crie imagens, videos e audio com IA</p>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Tabs */}
+        <div className="flex border-b border-gray-800">
           <button
-            onClick={handleReset}
-            className="px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition text-sm flex items-center gap-2"
+            onClick={() => setActiveTab('image')}
+            className={clsx(
+              'flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition',
+              activeTab === 'image' ? 'text-pink-400 border-pink-400' : 'text-gray-400 border-transparent hover:text-white'
+            )}
           >
-            <Icons.RefreshCw size={16} />
-            Resetar
+            <Icons.Image size={16} />
+            Imagem
           </button>
           <button
-            onClick={() => toast.success('Projeto salvo!')}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition text-sm flex items-center gap-2"
+            onClick={() => setActiveTab('video')}
+            className={clsx(
+              'flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition',
+              activeTab === 'video' ? 'text-purple-400 border-purple-400' : 'text-gray-400 border-transparent hover:text-white'
+            )}
           >
-            <Icons.Save size={16} />
-            Salvar
+            <Icons.Film size={16} />
+            Video
+          </button>
+          <button
+            onClick={() => setActiveTab('audio')}
+            className={clsx(
+              'flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition',
+              activeTab === 'audio' ? 'text-green-400 border-green-400' : 'text-gray-400 border-transparent hover:text-white'
+            )}
+          >
+            <Icons.Mic size={16} />
+            Audio
           </button>
         </div>
-      </header>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-hidden flex">
-        {/* Step 1: Script Generation */}
-        {currentStep === 1 && (
-          <div className="flex-1 flex">
-            {/* Chat Area */}
-            <div className="flex-1 flex flex-col">
-              <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">🤖</span>
-                  <div>
-                    <h2 className="text-white font-semibold">Criar Roteiro com IA</h2>
-                    <p className="text-xs text-gray-500">Descreva o vídeo que deseja criar</p>
-                  </div>
+        {/* Tab Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* IMAGE TAB */}
+          {activeTab === 'image' && (
+            <>
+              {/* Prompt */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Prompt</label>
+                <textarea
+                  value={imagePrompt}
+                  onChange={(e) => setImagePrompt(e.target.value)}
+                  placeholder="Descreva a imagem que deseja criar..."
+                  rows={4}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none resize-none"
+                />
+              </div>
+
+              {/* Negative Prompt */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Prompt Negativo</label>
+                <input
+                  type="text"
+                  value={negativePrompt}
+                  onChange={(e) => setNegativePrompt(e.target.value)}
+                  placeholder="O que evitar na imagem..."
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white text-sm placeholder-gray-500 focus:border-pink-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Style */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Estilo</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {FREEPIK_STYLES.map((style) => (
+                    <button
+                      key={style.id}
+                      onClick={() => setImageStyle(style.id)}
+                      className={clsx(
+                        'p-2 rounded-lg border text-center transition',
+                        imageStyle === style.id
+                          ? 'bg-pink-500/20 border-pink-500 text-pink-400'
+                          : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                      )}
+                    >
+                      <span className="text-lg">{style.icon}</span>
+                      <p className="text-xs mt-1">{style.label}</p>
+                    </button>
+                  ))}
                 </div>
+              </div>
+
+              {/* Size */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Tamanho</label>
                 <select
-                  value={selectedAgentId}
-                  onChange={(e) => setSelectedAgentId(e.target.value)}
-                  className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                  value={imageSize}
+                  onChange={(e) => setImageSize(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white focus:border-pink-500 focus:outline-none"
                 >
-                  <option value="">Selecione um agente</option>
-                  {studioAgents.map(a => (
-                    <option key={a.id} value={a.id}>{a.avatar} {a.name}</option>
+                  {FREEPIK_SIZES.map((size) => (
+                    <option key={size.id} value={size.id}>{size.icon} {size.label}</option>
                   ))}
                 </select>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {agentMessages.length === 0 ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center max-w-md">
-                      <div className="text-6xl mb-4">🎬</div>
-                      <h3 className="text-xl font-bold text-white mb-2">Creator Studio</h3>
-                      <p className="text-gray-400 mb-4">
-                        Descreva o vídeo que você quer criar. O agente IA vai gerar um roteiro
-                        com 12 cenas, incluindo descrições visuais e narração.
-                      </p>
-                      <div className="flex flex-wrap gap-2 justify-center">
-                        <button
-                          onClick={() => setAgentInput('Crie um vídeo sobre dicas de produtividade para empreendedores')}
-                          className="px-3 py-1.5 bg-gray-800 text-gray-300 rounded-lg text-sm hover:bg-gray-700 transition"
-                        >
-                          💡 Produtividade
-                        </button>
-                        <button
-                          onClick={() => setAgentInput('Crie um vídeo mostrando receita rápida de café da manhã saudável')}
-                          className="px-3 py-1.5 bg-gray-800 text-gray-300 rounded-lg text-sm hover:bg-gray-700 transition"
-                        >
-                          🍳 Receita
-                        </button>
-                        <button
-                          onClick={() => setAgentInput('Crie um vídeo motivacional sobre superação de desafios')}
-                          className="px-3 py-1.5 bg-gray-800 text-gray-300 rounded-lg text-sm hover:bg-gray-700 transition"
-                        >
-                          🔥 Motivacional
-                        </button>
-                      </div>
-                    </div>
+              {/* Color */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Cor</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setImageColor(undefined)}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-lg border text-xs transition',
+                      !imageColor ? 'bg-pink-500/20 border-pink-500 text-pink-400' : 'bg-gray-800 border-gray-700 text-gray-400'
+                    )}
+                  >
+                    Auto
+                  </button>
+                  {FREEPIK_COLORS.map((color) => (
+                    <button
+                      key={color.id}
+                      onClick={() => setImageColor(color.id)}
+                      className={clsx(
+                        'px-3 py-1.5 rounded-lg border text-xs transition flex items-center gap-1',
+                        imageColor === color.id ? 'bg-pink-500/20 border-pink-500 text-pink-400' : 'bg-gray-800 border-gray-700 text-gray-400'
+                      )}
+                    >
+                      <span
+                        className="w-3 h-3 rounded-full"
+                        style={{ background: color.color }}
+                      />
+                      {color.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Number of Images */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Quantidade: {numImages}</label>
+                <input
+                  type="range"
+                  min={1}
+                  max={4}
+                  value={numImages}
+                  onChange={(e) => setNumImages(parseInt(e.target.value))}
+                  className="w-full accent-pink-500"
+                />
+              </div>
+
+              {/* Reference Image */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Imagem de Referencia (Opcional)</label>
+                {referenceImage ? (
+                  <div className="relative">
+                    <img src={referenceImage} alt="Reference" className="w-full h-32 object-cover rounded-xl" />
+                    <button
+                      onClick={() => setReferenceImage(null)}
+                      className="absolute top-2 right-2 p-1 bg-red-500 rounded-lg text-white"
+                    >
+                      <Icons.X size={14} />
+                    </button>
                   </div>
                 ) : (
-                  <>
-                    {agentMessages.map((msg, idx) => (
-                      <div
-                        key={idx}
-                        className={clsx(
-                          'flex gap-3',
-                          msg.role === 'user' ? 'justify-end' : 'justify-start'
-                        )}
-                      >
-                        {msg.role === 'assistant' && (
-                          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center text-white">
-                            🤖
-                          </div>
-                        )}
-                        <div
-                          className={clsx(
-                            'max-w-[80%] rounded-2xl px-4 py-3',
-                            msg.role === 'user'
-                              ? 'bg-orange-500 text-white'
-                              : 'bg-gray-800 text-gray-200'
-                          )}
-                        >
-                          <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
-                        </div>
-                      </div>
-                    ))}
-                    <div ref={chatEndRef} />
-                  </>
+                  <label className="block cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileUpload(e, 'reference')}
+                      className="hidden"
+                    />
+                    <div className="border-2 border-dashed border-gray-700 rounded-xl p-6 text-center hover:border-pink-500 transition">
+                      <Icons.Upload size={24} className="mx-auto text-gray-500 mb-2" />
+                      <p className="text-xs text-gray-500">Arraste ou clique</p>
+                    </div>
+                  </label>
                 )}
               </div>
 
-              <div className="p-4 border-t border-gray-800">
-                <div className="flex gap-2">
-                  <textarea
-                    value={agentInput}
-                    onChange={(e) => setAgentInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        sendToAgent();
-                      }
-                    }}
-                    placeholder="Descreva o vídeo que você quer criar..."
-                    rows={2}
-                    className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none resize-none"
-                  />
-                  <button
-                    onClick={sendToAgent}
-                    disabled={isGeneratingScript || !agentInput.trim()}
-                    className="px-6 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-xl transition flex items-center gap-2"
-                  >
-                    {isGeneratingScript ? (
-                      <Icons.Loader size={20} className="animate-spin" />
-                    ) : (
-                      <Icons.Send size={20} />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
+              {/* Generate Button */}
+              <button
+                onClick={generateImage}
+                disabled={isGeneratingImage || !imagePrompt.trim()}
+                className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 disabled:opacity-50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition"
+              >
+                {isGeneratingImage ? (
+                  <>
+                    <Icons.Loader size={18} className="animate-spin" />
+                    Gerando...
+                  </>
+                ) : (
+                  <>
+                    <Icons.Sparkles size={18} />
+                    Gerar Imagem
+                  </>
+                )}
+              </button>
+            </>
+          )}
 
-            {/* Script Preview */}
-            {script && (
-              <div className="w-96 bg-gray-900 border-l border-gray-800 flex flex-col">
-                <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-                  <h3 className="text-white font-semibold flex items-center gap-2">
-                    📝 Roteiro
-                    {scriptApproved && <span className="text-green-400 text-xs">✓ Aprovado</span>}
-                  </h3>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4">
-                  <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono">{script}</pre>
-                </div>
-                <div className="p-4 border-t border-gray-800 flex gap-2">
-                  <button
-                    onClick={() => {
-                      approveScript();
-                      setCurrentStep(2);
-                      toast.success('Roteiro aprovado!');
-                    }}
-                    className="flex-1 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition flex items-center justify-center gap-2"
-                  >
-                    <Icons.Check size={16} />
-                    Aprovar
-                  </button>
-                  <button
-                    onClick={() => {
-                      rejectScript();
-                      setAgentMessages([]);
-                    }}
-                    className="flex-1 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-lg transition"
-                  >
-                    Refazer
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 2: Image Prompts */}
-        {currentStep === 2 && (
-          <div className="flex-1 flex flex-col p-6 overflow-hidden">
-            <div className="flex items-center justify-between mb-6">
+          {/* VIDEO TAB */}
+          {activeTab === 'video' && (
+            <>
+              {/* Source Image */}
               <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  💡 Prompts de Imagem
-                </h2>
-                <p className="text-sm text-gray-400">
-                  Edite os prompts para cada cena antes de gerar as imagens
+                <label className="text-sm text-gray-400 mb-2 block">Imagem de Origem</label>
+                {videoSourceImage ? (
+                  <div className="relative">
+                    <img src={videoSourceImage} alt="Source" className="w-full h-48 object-cover rounded-xl" />
+                    <button
+                      onClick={() => setVideoSourceImage(null)}
+                      className="absolute top-2 right-2 p-1.5 bg-red-500 rounded-lg text-white"
+                    >
+                      <Icons.X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="block cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileUpload(e, 'video')}
+                      className="hidden"
+                    />
+                    <div className="border-2 border-dashed border-gray-700 rounded-xl p-8 text-center hover:border-purple-500 transition">
+                      <Icons.Image size={32} className="mx-auto text-gray-500 mb-2" />
+                      <p className="text-sm text-gray-400">Arraste uma imagem ou clique</p>
+                      <p className="text-xs text-gray-600 mt-1">PNG, JPG ate 10MB</p>
+                    </div>
+                  </label>
+                )}
+              </div>
+
+              {/* Video Prompt */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Descricao do Movimento</label>
+                <textarea
+                  value={videoPrompt}
+                  onChange={(e) => setVideoPrompt(e.target.value)}
+                  placeholder="Descreva como a imagem deve se mover..."
+                  rows={3}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none"
+                />
+              </div>
+
+              {/* Video Model */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Modelo</label>
+                <select
+                  value={videoModel}
+                  onChange={(e) => setVideoModel(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white focus:border-purple-500 focus:outline-none"
+                >
+                  {FALAI_MODELS.map((model) => (
+                    <option key={model.id} value={model.id}>{model.name} - {model.description}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tips */}
+              <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+                <p className="text-purple-400 text-sm font-medium mb-2">Dicas</p>
+                <ul className="text-xs text-gray-400 space-y-1">
+                  <li>Use imagens de alta qualidade (1024x1024+)</li>
+                  <li>Evite imagens muito complexas</li>
+                  <li>Descreva movimentos naturais</li>
+                </ul>
+              </div>
+
+              {/* Generate Button */}
+              <button
+                onClick={generateVideo}
+                disabled={isGeneratingVideo || (!videoSourceImage && !videoPrompt.trim())}
+                className="w-full py-3 bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-400 hover:to-blue-500 disabled:opacity-50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition"
+              >
+                {isGeneratingVideo ? (
+                  <>
+                    <Icons.Loader size={18} className="animate-spin" />
+                    Gerando video...
+                  </>
+                ) : (
+                  <>
+                    <Icons.Film size={18} />
+                    Gerar Video
+                  </>
+                )}
+              </button>
+            </>
+          )}
+
+          {/* AUDIO TAB */}
+          {activeTab === 'audio' && (
+            <>
+              {/* Text Input */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Texto para Narracao</label>
+                <textarea
+                  value={audioText}
+                  onChange={(e) => setAudioText(e.target.value)}
+                  placeholder="Digite o texto que sera convertido em audio..."
+                  rows={6}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-green-500 focus:outline-none resize-none"
+                />
+                <p className="text-xs text-gray-500 mt-1">{audioText.length} caracteres</p>
+              </div>
+
+              {/* Voice Selection */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Voz</label>
+                <div className="space-y-2">
+                  {ELEVENLABS_VOICES.map((voice) => (
+                    <button
+                      key={voice.id}
+                      onClick={() => setAudioVoice(voice.id)}
+                      className={clsx(
+                        'w-full p-3 rounded-xl border text-left transition flex items-center gap-3',
+                        audioVoice === voice.id
+                          ? 'bg-green-500/20 border-green-500'
+                          : 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                      )}
+                    >
+                      <div className={clsx(
+                        'w-10 h-10 rounded-full flex items-center justify-center text-lg',
+                        voice.gender === 'Masculino' ? 'bg-blue-500/20 text-blue-400' : 'bg-pink-500/20 text-pink-400'
+                      )}>
+                        {voice.gender === 'Masculino' ? '👨' : '👩'}
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">{voice.name}</p>
+                        <p className="text-xs text-gray-500">{voice.gender} - {voice.lang}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Generate Button */}
+              <button
+                onClick={generateAudio}
+                disabled={isGeneratingAudio || !audioText.trim()}
+                className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 disabled:opacity-50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition"
+              >
+                {isGeneratingAudio ? (
+                  <>
+                    <Icons.Loader size={18} className="animate-spin" />
+                    Gerando audio...
+                  </>
+                ) : (
+                  <>
+                    <Icons.Mic size={18} />
+                    Gerar Audio
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content - Feed/Gallery */}
+      <div className="flex-1 flex flex-col">
+        {/* Feed Header */}
+        <div className="h-14 border-b border-gray-800 flex items-center justify-between px-6 bg-gray-900/30">
+          <h2 className="text-white font-medium flex items-center gap-2">
+            {activeTab === 'image' && <><Icons.Image size={18} className="text-pink-400" /> Imagens Geradas</>}
+            {activeTab === 'video' && <><Icons.Film size={18} className="text-purple-400" /> Videos Gerados</>}
+            {activeTab === 'audio' && <><Icons.Mic size={18} className="text-green-400" /> Audios Gerados</>}
+            <span className="text-gray-500 text-sm ml-2">({filteredHistory.length})</span>
+          </h2>
+          {filteredHistory.length > 0 && (
+            <button
+              onClick={() => {
+                if (confirm('Limpar todo o historico?')) {
+                  setHistory(prev => prev.filter(h => h.type !== activeTab));
+                  toast.success('Historico limpo');
+                }
+              }}
+              className="text-sm text-gray-500 hover:text-red-400 flex items-center gap-1"
+            >
+              <Icons.Trash size={14} />
+              Limpar
+            </button>
+          )}
+        </div>
+
+        {/* Feed Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {filteredHistory.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-24 h-24 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                  {activeTab === 'image' && <Icons.Image size={40} className="text-gray-600" />}
+                  {activeTab === 'video' && <Icons.Film size={40} className="text-gray-600" />}
+                  {activeTab === 'audio' && <Icons.Mic size={40} className="text-gray-600" />}
+                </div>
+                <h3 className="text-white font-medium mb-2">Nenhum conteudo ainda</h3>
+                <p className="text-gray-500 text-sm">
+                  {activeTab === 'image' && 'Gere sua primeira imagem com Freepik Mystic'}
+                  {activeTab === 'video' && 'Transforme imagens em videos com FAL.ai'}
+                  {activeTab === 'audio' && 'Crie narracoes com ElevenLabs'}
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                {/* Style selector */}
-                <select
-                  value={selectedStyle}
-                  onChange={(e) => setSelectedStyle(e.target.value)}
-                  className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
-                >
-                  {FREEPIK_STYLES.map(s => (
-                    <option key={s.id} value={s.id}>{s.icon} {s.label}</option>
-                  ))}
-                </select>
-
-                {/* Size selector */}
-                <select
-                  value={selectedSize}
-                  onChange={(e) => setSelectedSize(e.target.value)}
-                  className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
-                >
-                  {FREEPIK_SIZES.map(s => (
-                    <option key={s.id} value={s.id}>{s.icon} {s.label}</option>
-                  ))}
-                </select>
-
-                <button
-                  onClick={generateAllImages}
-                  disabled={isGeneratingImages || scenePrompts.length === 0}
-                  className="px-6 py-2 bg-pink-500 hover:bg-pink-600 disabled:opacity-50 text-white rounded-lg transition flex items-center gap-2"
-                >
-                  {isGeneratingImages ? (
-                    <>
-                      <Icons.Loader size={16} className="animate-spin" />
-                      Gerando...
-                    </>
-                  ) : (
-                    <>
-                      <Icons.Sparkles size={16} />
-                      Gerar Todas (Freepik)
-                    </>
-                  )}
-                </button>
-              </div>
             </div>
-
-            <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {scenePrompts.map((scene) => (
+          ) : (
+            <div className={clsx(
+              'grid gap-4',
+              activeTab === 'audio'
+                ? 'grid-cols-1'
+                : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+            )}>
+              {filteredHistory.map((item) => (
                 <div
-                  key={scene.id}
+                  key={item.id}
                   className={clsx(
-                    'bg-gray-900 border rounded-xl overflow-hidden transition',
-                    scene.approved ? 'border-green-500/50' : 'border-gray-800'
+                    'bg-gray-900 border border-gray-800 rounded-xl overflow-hidden group transition hover:border-gray-700',
+                    item.status === 'generating' && 'animate-pulse'
                   )}
                 >
-                  {/* Image preview */}
-                  <div className="aspect-video bg-gray-800 relative">
-                    {scene.imageUrl ? (
-                      <img
-                        src={scene.imageUrl}
-                        alt={`Cena ${scene.number}`}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-600">
-                        {scene.isGenerating ? (
-                          <Icons.Loader size={32} className="animate-spin" />
-                        ) : (
-                          <Icons.Image size={32} />
-                        )}
-                      </div>
-                    )}
-                    <div className="absolute top-2 left-2 px-2 py-1 bg-black/60 rounded text-xs text-white font-bold">
-                      CENA {scene.number}
-                    </div>
-                    {scene.approved && (
-                      <div className="absolute top-2 right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                        <Icons.Check size={14} className="text-white" />
-                      </div>
-                    )}
-                  </div>
+                  {/* Image/Video Preview */}
+                  {item.type === 'image' && (
+                    <div className="aspect-square bg-gray-800 relative">
+                      {item.status === 'completed' && item.url ? (
+                        <img src={item.url} alt={item.prompt} className="w-full h-full object-cover" />
+                      ) : item.status === 'generating' ? (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Icons.Loader size={32} className="text-pink-400 animate-spin" />
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Icons.AlertCircle size={32} className="text-red-400" />
+                        </div>
+                      )}
 
-                  {/* Prompt editor */}
-                  <div className="p-3">
-                    <textarea
-                      value={scene.text}
-                      onChange={(e) => updateScenePrompt(scene.id, e.target.value)}
-                      rows={3}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:border-orange-500 focus:outline-none resize-none"
-                    />
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={() => generateSceneImage(scene.id)}
-                        disabled={scene.isGenerating}
-                        className="flex-1 py-1.5 bg-pink-500/20 text-pink-400 hover:bg-pink-500/30 rounded-lg text-xs flex items-center justify-center gap-1 transition"
-                      >
-                        {scene.isGenerating ? (
-                          <Icons.Loader size={12} className="animate-spin" />
-                        ) : (
-                          <Icons.Sparkles size={12} />
-                        )}
-                        Gerar
-                      </button>
-                      {scene.imageUrl && (
+                      {/* Overlay Actions */}
+                      {item.status === 'completed' && item.url && (
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => downloadFile(item.url, `image_${item.id}.png`)}
+                            className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition"
+                            title="Download"
+                          >
+                            <Icons.Download size={18} className="text-white" />
+                          </button>
+                          <button
+                            onClick={() => useImageForVideo(item.url)}
+                            className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition"
+                            title="Usar para video"
+                          >
+                            <Icons.Film size={18} className="text-white" />
+                          </button>
+                          <button
+                            onClick={() => deleteHistoryItem(item.id)}
+                            className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 transition"
+                            title="Excluir"
+                          >
+                            <Icons.Trash size={18} className="text-white" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Video Preview */}
+                  {item.type === 'video' && (
+                    <div className="aspect-video bg-gray-800 relative">
+                      {item.status === 'completed' && item.url ? (
+                        <video src={item.url} controls className="w-full h-full object-cover" />
+                      ) : item.status === 'generating' ? (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <div className="text-center">
+                            <Icons.Loader size={32} className="text-purple-400 animate-spin mx-auto mb-2" />
+                            <p className="text-xs text-gray-500">Gerando video...</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Icons.AlertCircle size={32} className="text-red-400" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Audio Player */}
+                  {item.type === 'audio' && (
+                    <div className="p-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                          <Icons.Mic size={24} className="text-green-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-medium text-sm truncate">{item.settings?.voiceName || 'Voz'}</p>
+                          <p className="text-gray-500 text-xs truncate">{item.prompt}</p>
+                        </div>
+                      </div>
+                      {item.status === 'completed' && item.url && (
+                        <audio src={item.url} controls className="w-full mt-3" />
+                      )}
+                      {item.status === 'generating' && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <Icons.Loader size={14} className="text-green-400 animate-spin" />
+                          <span className="text-xs text-gray-500">Gerando audio...</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Item Info */}
+                  <div className="p-3 border-t border-gray-800">
+                    <p className="text-gray-400 text-xs line-clamp-2 mb-2">{item.prompt}</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-600">
+                        {new Date(item.createdAt).toLocaleString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                      {item.status === 'error' && (
+                        <span className="text-xs text-red-400">{item.error}</span>
+                      )}
+                      {item.status === 'completed' && item.type !== 'image' && (
                         <button
-                          onClick={() => setScenePrompts(prev =>
-                            prev.map(s => s.id === scene.id ? { ...s, approved: !s.approved } : s)
-                          )}
-                          className={clsx(
-                            'flex-1 py-1.5 rounded-lg text-xs transition',
-                            scene.approved
-                              ? 'bg-green-500/20 text-green-400'
-                              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                          )}
+                          onClick={() => downloadFile(item.url, `${item.type}_${item.id}.${item.type === 'video' ? 'mp4' : 'mp3'}`)}
+                          className="text-xs text-gray-400 hover:text-white flex items-center gap-1"
                         >
-                          {scene.approved ? '✓ Aprovada' : 'Aprovar'}
+                          <Icons.Download size={12} />
+                          Download
                         </button>
                       )}
                     </div>
@@ -656,332 +878,8 @@ Continue até a CENA 12.`;
                 </div>
               ))}
             </div>
-
-            {/* Navigation */}
-            <div className="flex justify-between pt-4 border-t border-gray-800 mt-4">
-              <button
-                onClick={() => setCurrentStep(1)}
-                className="px-6 py-2 text-gray-400 hover:text-white transition flex items-center gap-2"
-              >
-                <Icons.ArrowLeft size={16} />
-                Voltar ao Roteiro
-              </button>
-              <button
-                onClick={() => setCurrentStep(3)}
-                disabled={scenePrompts.filter(s => s.imageUrl).length === 0}
-                className="px-6 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-lg transition flex items-center gap-2"
-              >
-                Próximo: Imagens
-                <Icons.ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Images Gallery */}
-        {currentStep === 3 && (
-          <div className="flex-1 flex flex-col p-6 overflow-hidden">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  🖼️ Galeria de Imagens
-                </h2>
-                <p className="text-sm text-gray-400">
-                  {scenePrompts.filter(s => s.imageUrl).length} de {scenePrompts.length} imagens geradas
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={generateNarration}
-                  disabled={isGeneratingNarration}
-                  className="px-4 py-2 bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded-lg transition flex items-center gap-2"
-                >
-                  {isGeneratingNarration ? (
-                    <Icons.Loader size={16} className="animate-spin" />
-                  ) : (
-                    '🎙️'
-                  )}
-                  Gerar Narração
-                </button>
-                <button
-                  onClick={downloadAllAsZip}
-                  className="px-4 py-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded-lg transition flex items-center gap-2"
-                >
-                  <Icons.Download size={16} />
-                  Baixar Imagens
-                </button>
-              </div>
-            </div>
-
-            {/* Narration player */}
-            {narrationUrl && (
-              <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 mb-4">
-                <div className="flex items-center gap-4">
-                  <span className="text-2xl">🎙️</span>
-                  <div className="flex-1">
-                    <p className="text-green-400 font-medium">Narração Gerada</p>
-                    <audio src={narrationUrl} controls className="w-full mt-2" />
-                  </div>
-                  <button
-                    onClick={approveNarration}
-                    className={clsx(
-                      'px-4 py-2 rounded-lg transition',
-                      narrationApproved
-                        ? 'bg-green-500 text-white'
-                        : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                    )}
-                  >
-                    {narrationApproved ? '✓ Aprovada' : 'Aprovar'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-              {scenePrompts.map((scene) => (
-                <div
-                  key={scene.id}
-                  className={clsx(
-                    'aspect-[9/16] bg-gray-900 rounded-xl overflow-hidden relative group border-2 transition',
-                    scene.approved ? 'border-green-500' : 'border-transparent'
-                  )}
-                >
-                  {scene.imageUrl ? (
-                    <>
-                      <img
-                        src={scene.imageUrl}
-                        alt={`Cena ${scene.number}`}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => generateSceneImage(scene.id)}
-                          className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition"
-                          title="Regenerar"
-                        >
-                          <Icons.RefreshCw size={16} className="text-white" />
-                        </button>
-                        <a
-                          href={scene.imageUrl}
-                          download={`cena_${scene.number}.png`}
-                          className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition"
-                          title="Download"
-                        >
-                          <Icons.Download size={16} className="text-white" />
-                        </a>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-600">
-                      <Icons.Image size={24} />
-                    </div>
-                  )}
-                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-                    <span className="text-xs text-white font-bold">CENA {scene.number}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Navigation */}
-            <div className="flex justify-between pt-4 border-t border-gray-800 mt-4">
-              <button
-                onClick={() => setCurrentStep(2)}
-                className="px-6 py-2 text-gray-400 hover:text-white transition flex items-center gap-2"
-              >
-                <Icons.ArrowLeft size={16} />
-                Voltar aos Prompts
-              </button>
-              <button
-                onClick={() => setCurrentStep(4)}
-                className="px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition flex items-center gap-2"
-              >
-                Próximo: Vídeos
-                <Icons.ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Videos */}
-        {currentStep === 4 && (
-          <div className="flex-1 flex flex-col p-6 overflow-hidden">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  🎬 Geração de Vídeos
-                </h2>
-                <p className="text-sm text-gray-400">
-                  Transforme suas imagens em vídeos animados (em breve)
-                </p>
-              </div>
-            </div>
-
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center max-w-md">
-                <div className="text-6xl mb-4">🎬</div>
-                <h3 className="text-xl font-bold text-white mb-2">Em Breve!</h3>
-                <p className="text-gray-400 mb-6">
-                  A geração de vídeos via FAL.ai será implementada em breve.
-                  Por enquanto, você pode usar as imagens geradas para criar seus vídeos
-                  em ferramentas como CapCut, Canva ou Premiere.
-                </p>
-                <button
-                  onClick={() => setCurrentStep(5)}
-                  className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition"
-                >
-                  Ir para Exportação
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 5: Export */}
-        {currentStep === 5 && (
-          <div className="flex-1 flex flex-col p-6 overflow-hidden">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  📦 Exportar Projeto
-                </h2>
-                <p className="text-sm text-gray-400">
-                  Baixe todos os assets do seu projeto
-                </p>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-              <div className="max-w-2xl mx-auto space-y-6">
-                {/* Project Summary */}
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    📊 Resumo do Projeto
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-gray-800 rounded-lg p-4">
-                      <p className="text-3xl font-bold text-orange-400">
-                        {scenePrompts.filter(s => s.imageUrl).length}
-                      </p>
-                      <p className="text-sm text-gray-400">Imagens Geradas</p>
-                    </div>
-                    <div className="bg-gray-800 rounded-lg p-4">
-                      <p className="text-3xl font-bold text-green-400">
-                        {narrationUrl ? '1' : '0'}
-                      </p>
-                      <p className="text-sm text-gray-400">Narração</p>
-                    </div>
-                    <div className="bg-gray-800 rounded-lg p-4">
-                      <p className="text-3xl font-bold text-blue-400">
-                        {scenePrompts.length}
-                      </p>
-                      <p className="text-sm text-gray-400">Total de Cenas</p>
-                    </div>
-                    <div className="bg-gray-800 rounded-lg p-4">
-                      <p className="text-3xl font-bold text-purple-400">
-                        {scenePrompts.filter(s => s.approved).length}
-                      </p>
-                      <p className="text-sm text-gray-400">Aprovadas</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Download Options */}
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    ⬇️ Downloads
-                  </h3>
-                  <div className="space-y-3">
-                    <button
-                      onClick={downloadAllAsZip}
-                      className="w-full py-4 bg-pink-500/20 text-pink-400 hover:bg-pink-500/30 rounded-xl transition flex items-center justify-center gap-3"
-                    >
-                      <Icons.Download size={20} />
-                      Baixar Todas as Imagens
-                    </button>
-
-                    {narrationUrl && (
-                      <a
-                        href={narrationUrl}
-                        download="narracao.mp3"
-                        className="w-full py-4 bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded-xl transition flex items-center justify-center gap-3"
-                      >
-                        <Icons.Download size={20} />
-                        Baixar Narração (MP3)
-                      </a>
-                    )}
-
-                    <button
-                      onClick={() => {
-                        const data = {
-                          projectName,
-                          script,
-                          scenePrompts,
-                          narrationUrl,
-                          exportedAt: new Date().toISOString(),
-                        };
-                        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `${projectName.replace(/\s+/g, '_')}_projeto.json`;
-                        a.click();
-                        toast.success('Projeto exportado!');
-                      }}
-                      className="w-full py-4 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded-xl transition flex items-center justify-center gap-3"
-                    >
-                      <Icons.Download size={20} />
-                      Exportar Projeto (JSON)
-                    </button>
-                  </div>
-                </div>
-
-                {/* Next Steps */}
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    🚀 Próximos Passos
-                  </h3>
-                  <ul className="space-y-3 text-gray-400">
-                    <li className="flex items-center gap-3">
-                      <span className="w-6 h-6 bg-orange-500/20 rounded flex items-center justify-center text-orange-400 text-xs">1</span>
-                      Importe as imagens no CapCut ou Canva
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <span className="w-6 h-6 bg-orange-500/20 rounded flex items-center justify-center text-orange-400 text-xs">2</span>
-                      Adicione a narração ao vídeo
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <span className="w-6 h-6 bg-orange-500/20 rounded flex items-center justify-center text-orange-400 text-xs">3</span>
-                      Adicione transições e efeitos
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <span className="w-6 h-6 bg-orange-500/20 rounded flex items-center justify-center text-orange-400 text-xs">4</span>
-                      Exporte e publique nas redes sociais!
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Navigation */}
-            <div className="flex justify-between pt-4 border-t border-gray-800 mt-4">
-              <button
-                onClick={() => setCurrentStep(3)}
-                className="px-6 py-2 text-gray-400 hover:text-white transition flex items-center gap-2"
-              >
-                <Icons.ArrowLeft size={16} />
-                Voltar
-              </button>
-              <button
-                onClick={handleReset}
-                className="px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition flex items-center gap-2"
-              >
-                <Icons.Plus size={16} />
-                Novo Projeto
-              </button>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
