@@ -16,6 +16,12 @@ import { ChatbotPage } from './pages/ChatbotPage';
 import { LoginPage } from './pages/LoginPage';
 import { ContentCreatorPage } from './pages/ContentCreatorPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { ProfilePage } from './pages/ProfilePage';
+// Super Admin Pages
+import { SuperAdminDashboard } from './pages/super-admin/SuperAdminDashboard';
+import { TenantsPage } from './pages/super-admin/TenantsPage';
+import { PlansPage } from './pages/super-admin/PlansPage';
+import { GlobalIntegrationsPage } from './pages/super-admin/GlobalIntegrationsPage';
 import { Icons } from './components/Icons';
 import { useStore } from './store';
 
@@ -129,6 +135,15 @@ function AppContent() {
           <Route path="/studio" element={<ProtectedRoute><CreatorStudioPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
           <Route path="/content/:demandId" element={<ProtectedRoute><ContentCreatorPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+
+          {/* Super Admin Routes */}
+          <Route path="/super-admin" element={<ProtectedRoute><SuperAdminDashboard /></ProtectedRoute>} />
+          <Route path="/super-admin/dashboard" element={<ProtectedRoute><SuperAdminDashboard /></ProtectedRoute>} />
+          <Route path="/super-admin/tenants" element={<ProtectedRoute><TenantsPage /></ProtectedRoute>} />
+          <Route path="/super-admin/plans" element={<ProtectedRoute><PlansPage /></ProtectedRoute>} />
+          <Route path="/super-admin/integrations" element={<ProtectedRoute><GlobalIntegrationsPage /></ProtectedRoute>} />
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

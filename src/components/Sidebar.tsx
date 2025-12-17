@@ -17,8 +17,15 @@ const navItems = [
   { path: '/calendar', icon: Icons.Calendar, label: 'Calendário' },
   { path: '/clients', icon: Icons.Users, label: 'Clientes' },
   { path: '/agents', icon: Icons.Bot, label: 'Agentes' },
-  { path: '/settings', icon: Icons.Settings, label: 'Config' },
+  { path: '/settings', icon: Icons.Settings, label: 'Equipe' },
   { path: '/admin', icon: Icons.Shield, label: 'Admin', adminOnly: true },
+];
+
+const superAdminItems = [
+  { path: '/super-admin', icon: Icons.Dashboard, label: 'Dashboard' },
+  { path: '/super-admin/tenants', icon: Icons.Building, label: 'Tenants' },
+  { path: '/super-admin/plans', icon: Icons.CreditCard, label: 'Planos' },
+  { path: '/super-admin/integrations', icon: Icons.Key, label: 'Integrações' },
 ];
 
 export const Sidebar = ({ onClose, isMobile }: SidebarProps) => {
@@ -35,11 +42,14 @@ export const Sidebar = ({ onClose, isMobile }: SidebarProps) => {
 
   // Filtrar itens de admin se usuário não for admin
   const filteredNavItems = navItems.filter(item => {
-    if (item.adminOnly && currentUser?.role !== 'admin') {
+    if (item.adminOnly && currentUser?.role !== 'admin' && currentUser?.role !== 'super_admin') {
       return false;
     }
     return true;
   });
+
+  // Verificar se é super admin
+  const isSuperAdmin = currentUser?.role === 'super_admin';
 
   return (
     <aside className="w-64 lg:w-64 h-full bg-gray-900 border-r border-gray-800 flex flex-col">
@@ -95,6 +105,31 @@ export const Sidebar = ({ onClose, isMobile }: SidebarProps) => {
             {item.badge && <span className="text-sm">{item.badge}</span>}
           </NavLink>
         ))}
+
+        {/* Super Admin Section */}
+        {isSuperAdmin && (
+          <>
+            <div className="pt-4 pb-2">
+              <p className="px-3 lg:px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Super Admin
+              </p>
+            </div>
+            {superAdminItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                onClick={onClose}
+                className={({ isActive }) => clsx(
+                  'flex items-center gap-3 px-3 lg:px-4 py-2.5 lg:py-3 rounded-xl transition-all group',
+                  isActive ? 'bg-purple-500/20 text-purple-400' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                )}
+              >
+                <item.icon size={20} />
+                <span className="flex-1 font-medium text-sm lg:text-base">{item.label}</span>
+              </NavLink>
+            ))}
+          </>
+        )}
       </nav>
 
       {/* Notifications */}
@@ -112,14 +147,18 @@ export const Sidebar = ({ onClose, isMobile }: SidebarProps) => {
       {/* User */}
       <div className="p-3 lg:p-4 border-t border-gray-800">
         <div className="flex items-center gap-2 lg:gap-3 px-3 lg:px-4 py-2 lg:py-3 bg-gray-800/50 rounded-xl">
-          <div className="w-8 h-8 lg:w-10 lg:h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+          <NavLink
+            to="/profile"
+            onClick={onClose}
+            className="w-8 h-8 lg:w-10 lg:h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm hover:ring-2 hover:ring-orange-500 transition"
+          >
             {currentUser?.name?.charAt(0).toUpperCase() || 'U'}
-          </div>
-          <div className="flex-1 min-w-0">
+          </NavLink>
+          <NavLink to="/profile" onClick={onClose} className="flex-1 min-w-0 hover:opacity-80 transition">
             <p className="text-sm text-white font-medium truncate">{currentUser?.name || 'Usuário'}</p>
             <p className="text-xs text-gray-500 truncate">{currentUser?.email || ''}</p>
-          </div>
-          <button 
+          </NavLink>
+          <button
             onClick={handleLogout}
             className="p-1.5 lg:p-2 hover:bg-gray-700 rounded-lg transition"
             title="Sair"

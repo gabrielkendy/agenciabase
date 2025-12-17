@@ -102,18 +102,18 @@ class KnowledgeService {
     };
 
     if (isSupabaseConfigured() && supabase) {
-      const { data, error } = await supabase
+      const result = await supabase
         .from('agent_knowledge')
-        .insert([newItem])
+        .insert([newItem] as any)
         .select()
         .single();
-      
-      if (error) {
-        console.error('Erro Supabase:', error);
+
+      if (result.error) {
+        console.error('Erro Supabase:', result.error);
         // Fallback para localStorage
         return this.saveToLocalStorage(newItem);
       }
-      return data;
+      return result.data as KnowledgeItem;
     }
 
     return this.saveToLocalStorage(newItem);
