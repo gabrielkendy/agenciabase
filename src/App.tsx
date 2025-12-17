@@ -11,6 +11,7 @@ import { AgentsPage } from './pages/AgentsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ApprovalPage } from './pages/ApprovalPage';
 import { AdminPage } from './pages/AdminPage';
+import { CreatorStudioPage } from './pages/CreatorStudioPage';
 import { ChatbotPage } from './pages/ChatbotPage';
 import { LoginPage } from './pages/LoginPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -124,6 +125,7 @@ function AppContent() {
           <Route path="/clients" element={<ProtectedRoute><ClientsPage /></ProtectedRoute>} />
           <Route path="/agents" element={<ProtectedRoute><AgentsPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/studio" element={<ProtectedRoute><CreatorStudioPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

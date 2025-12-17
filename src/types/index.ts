@@ -396,6 +396,9 @@ export interface APIConfig {
   zapi_instance_id?: string;
   zapi_token?: string;
   zapi_client_token?: string;
+  // Creator Studio APIs
+  falai_key?: string;
+  elevenlabs_key?: string;
 }
 
 export interface LateConnectedAccount {

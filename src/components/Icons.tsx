@@ -87,6 +87,8 @@ import {
   UserPlus,
   UserCheck,
   Pencil,
+  Film,
+  Clapperboard,
 } from 'lucide-react';
 
 export const Icons = {
@@ -215,4 +217,7 @@ export const Icons = {
   Pencil,
   Paperclip,
   Attachment: Paperclip,
+  Film,
+  Clapperboard,
+  Studio: Clapperboard,
 };

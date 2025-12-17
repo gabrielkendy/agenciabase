@@ -12,6 +12,7 @@ interface SidebarProps {
 const navItems = [
   { path: '/', icon: Icons.Dashboard, label: 'Dashboard' },
   { path: '/chat', icon: Icons.Chat, label: 'Chat IA', badge: '🤖' },
+  { path: '/studio', icon: Icons.Studio, label: 'Creator Studio', badge: '🎬' },
   { path: '/workflow', icon: Icons.Kanban, label: 'Workflow' },
   { path: '/calendar', icon: Icons.Calendar, label: 'Calendário' },
   { path: '/clients', icon: Icons.Users, label: 'Clientes' },
