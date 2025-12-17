@@ -1,6 +1,8 @@
 // Freepik Mystic API Service
 // Documentation: https://docs.freepik.com/mystic
 
+import { tokenTracker } from '../lib/tokenTracker';
+
 export interface FreepikGenerationRequest {
   prompt: string;
   negative_prompt?: string;
@@ -16,6 +18,11 @@ export interface FreepikGenerationRequest {
     lightning?: 'studio' | 'warm' | 'cinematic' | 'low-light' | 'epic' | 'golden-hour' | 'dramatic' | 'hard-flash';
     framing?: 'portrait' | 'close-up' | 'full-body' | 'headshot' | 'cinematic' | 'landscape-photo' | 'product-shot' | 'abstract';
   };
+  // Mystic v2 features
+  resolution?: '2k' | '4k';
+  realism?: boolean; // Enable realistic style boost
+  engine?: 'automatic' | 'magnific_illusio' | 'magnific_sharpy' | 'magnific_sparkle';
+  creative_detailing?: number; // 0-100
 }
 
 export interface FreepikGenerationResponse {
@@ -117,12 +124,45 @@ class FreepikService {
     throw new Error('Timeout aguardando geração');
   }
 
-  // High-level method to generate and wait
-  async generateAndWait(request: FreepikGenerationRequest): Promise<string[]> {
-    const initial = await this.generateImage(request);
-    const result = await this.waitForGeneration(initial.data.id);
+  // High-level method to generate and wait with tracking
+  async generateAndWait(
+    request: FreepikGenerationRequest,
+    userId: string = 'anonymous',
+    userName?: string
+  ): Promise<string[]> {
+    const startTime = performance.now();
+    const imageCount = request.num_images || 1;
 
-    return result.data.generated?.map(g => g.url) || [];
+    try {
+      const initial = await this.generateImage(request);
+      const result = await this.waitForGeneration(initial.data.id);
+      const responseTimeMs = Math.round(performance.now() - startTime);
+
+      tokenTracker.trackImage({
+        userId,
+        userName,
+        provider: 'freepik',
+        model: 'mystic',
+        imageCount,
+        responseTimeMs,
+        success: true
+      });
+
+      return result.data.generated?.map(g => g.url) || [];
+    } catch (error) {
+      const responseTimeMs = Math.round(performance.now() - startTime);
+      tokenTracker.trackImage({
+        userId,
+        userName,
+        provider: 'freepik',
+        model: 'mystic',
+        imageCount,
+        responseTimeMs,
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro desconhecido'
+      });
+      throw error;
+    }
   }
 
   // Upscale image
@@ -148,6 +188,21 @@ class FreepikService {
   // Remove background
   async removeBackground(image: string): Promise<FreepikGenerationResponse> {
     return this.request('/ai/remove-background', 'POST', { image });
+  }
+
+  // Relight image - change lighting conditions
+  async relightImage(image: string, light_source: string = 'left'): Promise<FreepikGenerationResponse> {
+    return this.request('/ai/relight', 'POST', { image, light_source });
+  }
+
+  // Style transfer
+  async styleTransfer(image: string, style_image: string): Promise<FreepikGenerationResponse> {
+    return this.request('/ai/style-transfer', 'POST', { image, style_image });
+  }
+
+  // Get available LoRAs for Mystic
+  async getLoRAs(): Promise<any> {
+    return this.request('/ai/mystic/loras', 'GET');
   }
 
   // Helper to convert file to base64

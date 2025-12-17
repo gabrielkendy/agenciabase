@@ -26,6 +26,7 @@ const superAdminItems = [
   { path: '/super-admin/tenants', icon: Icons.Building, label: 'Tenants' },
   { path: '/super-admin/plans', icon: Icons.CreditCard, label: 'Planos' },
   { path: '/super-admin/integrations', icon: Icons.Key, label: 'Integrações' },
+  { path: '/super-admin/analytics', icon: Icons.TrendingUp, label: 'Analytics' },
 ];
 
 export const Sidebar = ({ onClose, isMobile }: SidebarProps) => {

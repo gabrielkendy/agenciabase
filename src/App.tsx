@@ -23,6 +23,7 @@ import { SuperAdminDashboard } from './pages/super-admin/SuperAdminDashboard';
 import { TenantsPage } from './pages/super-admin/TenantsPage';
 import { PlansPage } from './pages/super-admin/PlansPage';
 import { GlobalIntegrationsPage } from './pages/super-admin/GlobalIntegrationsPage';
+import { UsageAnalyticsPage } from './pages/super-admin/UsageAnalyticsPage';
 import { Icons } from './components/Icons';
 import { useStore } from './store';
 import { secureSession, auditLog } from './lib/security';
@@ -187,6 +188,7 @@ function AppContent() {
           <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsPage /></SuperAdminRoute>} />
           <Route path="/super-admin/plans" element={<SuperAdminRoute><PlansPage /></SuperAdminRoute>} />
           <Route path="/super-admin/integrations" element={<SuperAdminRoute><GlobalIntegrationsPage /></SuperAdminRoute>} />
+          <Route path="/super-admin/analytics" element={<SuperAdminRoute><UsageAnalyticsPage /></SuperAdminRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

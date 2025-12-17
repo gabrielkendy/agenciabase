@@ -11,12 +11,12 @@ type FilterType = 'all' | 'favorites' | 'recent';
 
 // AI Tools
 const AI_TOOLS = [
-  { id: 'upscale', name: 'Upscale 4x', icon: '🔍', description: 'Aumente a resolucao em ate 4x', color: 'blue' },
-  { id: 'remove-bg', name: 'Remover Fundo', icon: '✂️', description: 'Remova o fundo de qualquer imagem', color: 'green' },
-  { id: 'sketch', name: 'Sketch to Image', icon: '✏️', description: 'Transforme esbocos em imagens reais', color: 'purple' },
-  { id: 'reimagine', name: 'Reimaginar', icon: '🔄', description: 'Recrie a imagem com novo estilo', color: 'pink' },
-  { id: 'recolor', name: 'Recolorir', icon: '🎨', description: 'Mude as cores da imagem', color: 'orange' },
-  { id: 'inpaint', name: 'Inpainting', icon: '🖌️', description: 'Edite partes especificas da imagem', color: 'yellow' },
+  { id: 'upscale', name: 'Upscale 4x', icon: '🔍', description: 'Aumente resolucao em ate 4x', color: 'blue' },
+  { id: 'remove-bg', name: 'Remover Fundo', icon: '✂️', description: 'Remova o fundo', color: 'green' },
+  { id: 'sketch', name: 'Sketch to Image', icon: '✏️', description: 'Esbocos em imagens', color: 'purple' },
+  { id: 'reimagine', name: 'Reimaginar', icon: '🔄', description: 'Novo estilo na imagem', color: 'pink' },
+  { id: 'recolor', name: 'Recolorir', icon: '🎨', description: 'Mude as cores', color: 'orange' },
+  { id: 'relight', name: 'Relight', icon: '💡', description: 'Mude a iluminacao', color: 'yellow' },
 ];
 
 interface GeneratedItem {
@@ -43,18 +43,21 @@ const ELEVENLABS_VOICES = [
   { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', lang: 'en', gender: 'Feminino', preview: '' },
 ];
 
-// FAL.ai Models with details
-const FALAI_MODELS = [
-  { id: 'fal-ai/fast-svd-lcm', name: 'Fast SVD (LCM)', description: 'Video rapido a partir de imagem', speed: 'fast', quality: 'good' },
-  { id: 'fal-ai/stable-video', name: 'Stable Video', description: 'Video estavel de alta qualidade', speed: 'medium', quality: 'high' },
-  { id: 'fal-ai/animatediff', name: 'AnimateDiff', description: 'Animacao de imagens estaticas', speed: 'slow', quality: 'highest' },
+// Video Models - FAL.ai
+const VIDEO_MODELS = [
+  { id: 'fal-ai/fast-svd-lcm', name: 'Fast SVD', provider: 'falai', description: 'Video rapido (2-4s)', speed: 'fast', quality: 'good', icon: '⚡' },
+  { id: 'fal-ai/stable-video', name: 'Stable Video', provider: 'falai', description: 'Alta qualidade (4s)', speed: 'medium', quality: 'high', icon: '🎬' },
+  { id: 'fal-ai/animatediff-v2v', name: 'AnimateDiff', provider: 'falai', description: 'Animacao estilizada', speed: 'slow', quality: 'highest', icon: '✨' },
+  { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: 'Kling 1.0', provider: 'falai', description: 'Kling AI Standard (5s)', speed: 'medium', quality: 'high', icon: '🎥' },
+  { id: 'fal-ai/minimax/video-01/image-to-video', name: 'Minimax Video', provider: 'falai', description: 'Alta fidelidade', speed: 'slow', quality: 'highest', icon: '🌟' },
 ];
 
 // Image Models
 const IMAGE_MODELS = [
   { id: 'freepik-mystic', name: 'Freepik Mystic', provider: 'freepik', icon: '🎨', description: 'Alta qualidade, estilos variados' },
-  { id: 'flux-schnell', name: 'Flux Schnell', provider: 'falai', icon: '⚡', description: 'Ultra rapido, boa qualidade' },
-  { id: 'dall-e-3', name: 'DALL-E 3', provider: 'openai', icon: '🤖', description: 'OpenAI, muito preciso' },
+  { id: 'flux-schnell', name: 'Flux Schnell', provider: 'falai', icon: '⚡', description: 'Ultra rapido (1-4 steps)' },
+  { id: 'flux-dev', name: 'Flux Dev', provider: 'falai', icon: '🔥', description: 'Maior qualidade, mais lento' },
+  { id: 'dall-e-3', name: 'DALL·E 3', provider: 'openai', icon: '🤖', description: 'OpenAI, muito preciso' },
 ];
 
 export const CreatorStudioPage = () => {
@@ -258,7 +261,21 @@ export const CreatorStudioPage = () => {
 
         urls = await freepikService.generateAndWait(request);
       } else if (model.provider === 'falai') {
-        const response = await fetch('https://fal.run/fal-ai/flux/schnell', {
+        // Determinar endpoint baseado no modelo
+        const falEndpoint = model.id === 'flux-dev'
+          ? 'https://fal.run/fal-ai/flux/dev'
+          : 'https://fal.run/fal-ai/flux/schnell';
+
+        // Mapear tamanhos para formato FAL.ai
+        const sizeMap: Record<string, string> = {
+          'square_1_1': 'square',
+          'widescreen_16_9': 'landscape_16_9',
+          'portrait_9_16': 'portrait_9_16',
+          'classic_4_3': 'landscape_4_3',
+          'traditional_3_4': 'portrait_4_3',
+        };
+
+        const response = await fetch(falEndpoint, {
           method: 'POST',
           headers: {
             'Authorization': `Key ${apiConfig.falai_key}`,
@@ -266,13 +283,18 @@ export const CreatorStudioPage = () => {
           },
           body: JSON.stringify({
             prompt: imagePrompt,
-            negative_prompt: negativePrompt,
             num_images: numImages,
-            image_size: imageSize === 'widescreen_16_9' ? 'landscape_16_9' : imageSize === 'portrait_9_16' ? 'portrait_9_16' : 'square',
+            image_size: sizeMap[imageSize] || 'square',
+            num_inference_steps: model.id === 'flux-dev' ? 28 : 4,
+            guidance_scale: model.id === 'flux-dev' ? 3.5 : undefined,
+            enable_safety_checker: true,
           }),
         });
 
-        if (!response.ok) throw new Error('Erro ao gerar imagem');
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.detail || err.message || 'Erro ao gerar imagem no FAL.ai');
+        }
         const data = await response.json();
         urls = data.images?.map((img: any) => img.url) || [];
       } else if (model.provider === 'openai') {
@@ -354,28 +376,56 @@ export const CreatorStudioPage = () => {
     });
 
     try {
+      // Configurar body baseado no modelo
+      let requestBody: Record<string, any> = {};
+
+      if (videoModel.includes('kling')) {
+        // Kling AI
+        requestBody = {
+          image_url: videoSourceImage,
+          prompt: videoPrompt || 'Smooth natural motion',
+          duration: '5',
+          aspect_ratio: '16:9',
+        };
+      } else if (videoModel.includes('minimax')) {
+        // Minimax
+        requestBody = {
+          image_url: videoSourceImage,
+          prompt: videoPrompt || 'Natural motion',
+        };
+      } else if (videoModel.includes('animatediff')) {
+        // AnimateDiff
+        requestBody = {
+          image_url: videoSourceImage,
+          prompt: videoPrompt,
+          num_inference_steps: 25,
+        };
+      } else {
+        // SVD / Stable Video padrão
+        requestBody = {
+          image_url: videoSourceImage,
+          motion_bucket_id: 127,
+          fps: 7,
+          cond_aug: 0.02,
+        };
+      }
+
       const response = await fetch('https://fal.run/' + videoModel, {
         method: 'POST',
         headers: {
           'Authorization': `Key ${apiConfig.falai_key}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          image_url: videoSourceImage,
-          prompt: videoPrompt,
-          motion_bucket_id: 127,
-          fps: 7,
-          cond_aug: 0.02,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Erro ao gerar video');
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || error.message || 'Erro ao gerar video');
       }
 
       const data = await response.json();
-      const videoUrl = data.video?.url || data.video_url;
+      const videoUrl = data.video?.url || data.video_url || data.output?.video;
 
       setVideoProgress(100);
 
@@ -559,6 +609,11 @@ export const CreatorStudioPage = () => {
           image: imageBase64,
           prompt: toolPrompt,
         });
+        const result = await freepikService.waitForGeneration(response.data.id);
+        resultUrl = result.data.generated?.[0]?.url || '';
+      } else if (selectedTool === 'relight') {
+        const lightDirection = toolPrompt.trim() || 'left';
+        const response = await freepikService.relightImage(imageBase64, lightDirection);
         const result = await freepikService.waitForGeneration(response.data.id);
         resultUrl = result.data.generated?.[0]?.url || '';
       } else {
@@ -904,15 +959,25 @@ export const CreatorStudioPage = () => {
 
                   {/* Number of Images */}
                   <div>
-                    <label className="text-sm text-gray-400 mb-2 block font-medium">Quantidade: {numImages}</label>
-                    <input
-                      type="range"
-                      min={1}
-                      max={4}
-                      value={numImages}
-                      onChange={(e) => setNumImages(parseInt(e.target.value))}
-                      className="w-full accent-pink-500"
-                    />
+                    <label className="text-sm text-gray-400 mb-2 block font-medium">Quantidade</label>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setNumImages(Math.max(1, numImages - 1))}
+                        disabled={numImages <= 1}
+                        className="w-10 h-10 rounded-xl bg-gray-800 border border-gray-700 text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-lg font-bold transition"
+                      >
+                        -
+                      </button>
+                      <span className="w-12 text-center text-2xl font-bold text-white">{numImages}</span>
+                      <button
+                        onClick={() => setNumImages(Math.min(4, numImages + 1))}
+                        disabled={numImages >= 4}
+                        className="w-10 h-10 rounded-xl bg-gray-800 border border-gray-700 text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-lg font-bold transition"
+                      >
+                        +
+                      </button>
+                      <span className="text-xs text-gray-500">max 4</span>
+                    </div>
                   </div>
 
                   {/* Reference Image */}
@@ -1031,37 +1096,40 @@ export const CreatorStudioPage = () => {
 
               {/* Video Model */}
               <div>
-                <label className="text-sm text-gray-400 mb-2 block font-medium">Modelo</label>
-                <div className="space-y-2">
-                  {FALAI_MODELS.map((model) => (
+                <label className="text-sm text-gray-400 mb-2 block font-medium">Modelo de Video</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {VIDEO_MODELS.map((model) => (
                     <button
                       key={model.id}
                       onClick={() => setVideoModel(model.id)}
                       className={clsx(
-                        'w-full p-3 rounded-xl border text-left transition flex items-center gap-3',
+                        'p-3 rounded-xl border text-left transition',
                         videoModel === model.id
                           ? 'bg-purple-500/20 border-purple-500'
                           : 'bg-gray-800 border-gray-700 hover:border-gray-600'
                       )}
                     >
-                      <div className={clsx(
-                        'w-10 h-10 rounded-lg flex items-center justify-center',
-                        model.speed === 'fast' ? 'bg-green-500/20 text-green-400' :
-                        model.speed === 'medium' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'
-                      )}>
-                        {model.speed === 'fast' ? '⚡' : model.speed === 'medium' ? '🎬' : '✨'}
-                      </div>
-                      <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">{model.icon}</span>
                         <p className="text-white font-medium text-sm">{model.name}</p>
-                        <p className="text-xs text-gray-500">{model.description}</p>
                       </div>
-                      <span className={clsx(
-                        'text-xs px-2 py-1 rounded-full',
-                        model.quality === 'highest' ? 'bg-purple-500/20 text-purple-400' :
-                        model.quality === 'high' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'
-                      )}>
-                        {model.quality === 'highest' ? 'Premium' : model.quality === 'high' ? 'Alta' : 'Boa'}
-                      </span>
+                      <p className="text-xs text-gray-500">{model.description}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className={clsx(
+                          'text-[10px] px-1.5 py-0.5 rounded',
+                          model.speed === 'fast' ? 'bg-green-500/20 text-green-400' :
+                          model.speed === 'medium' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-orange-500/20 text-orange-400'
+                        )}>
+                          {model.speed === 'fast' ? 'Rapido' : model.speed === 'medium' ? 'Medio' : 'Lento'}
+                        </span>
+                        <span className={clsx(
+                          'text-[10px] px-1.5 py-0.5 rounded',
+                          model.quality === 'highest' ? 'bg-purple-500/20 text-purple-400' :
+                          model.quality === 'high' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'
+                        )}>
+                          {model.quality === 'highest' ? 'Premium' : model.quality === 'high' ? 'Alta' : 'Boa'}
+                        </span>
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -1306,12 +1374,13 @@ export const CreatorStudioPage = () => {
                 </div>
               )}
 
-              {(selectedTool === 'sketch' || selectedTool === 'reimagine' || selectedTool === 'recolor') && (
+              {(selectedTool === 'sketch' || selectedTool === 'reimagine' || selectedTool === 'recolor' || selectedTool === 'relight') && (
                 <div>
                   <label className="text-sm text-gray-400 mb-2 block font-medium">
                     {selectedTool === 'sketch' && 'Descreva a imagem desejada'}
                     {selectedTool === 'reimagine' && 'Descricao do novo estilo (opcional)'}
                     {selectedTool === 'recolor' && 'Descreva as cores desejadas'}
+                    {selectedTool === 'relight' && 'Direcao da luz'}
                   </label>
                   <textarea
                     value={toolPrompt}
@@ -1319,9 +1388,10 @@ export const CreatorStudioPage = () => {
                     placeholder={
                       selectedTool === 'sketch' ? 'Ex: Uma paisagem realista com montanhas e lago...' :
                       selectedTool === 'reimagine' ? 'Ex: Estilo cyberpunk neon...' :
+                      selectedTool === 'relight' ? 'Ex: left, right, top, bottom' :
                       'Ex: Tons de azul e roxo, cores vibrantes...'
                     }
-                    rows={3}
+                    rows={selectedTool === 'relight' ? 1 : 3}
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none resize-none"
                   />
                 </div>
@@ -1355,7 +1425,7 @@ export const CreatorStudioPage = () => {
                   {selectedTool === 'sketch' && 'Transforma esbocos em imagens realistas. Adicione uma descricao detalhada.'}
                   {selectedTool === 'reimagine' && 'Recria a imagem com novo estilo mantendo a composicao original.'}
                   {selectedTool === 'recolor' && 'Muda as cores da imagem. Descreva as cores que deseja aplicar.'}
-                  {selectedTool === 'inpaint' && 'Em breve: Edite partes especificas da imagem com IA.'}
+                  {selectedTool === 'relight' && 'Muda a direcao da luz na imagem. Digite: left, right, top, bottom.'}
                 </p>
               </div>
 

@@ -2,6 +2,10 @@
 // Docs: https://openrouter.ai/docs
 
 import { AIModel, AI_MODELS } from '../types';
+import { tokenTracker } from '../lib/tokenTracker';
+
+// Estimar tokens (aproximacao: 1 token ~= 4 caracteres)
+const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -80,36 +84,86 @@ class OpenRouterService {
       temperature?: number;
       maxTokens?: number;
       stream?: boolean;
+      userId?: string;
+      userName?: string;
     } = {}
   ): Promise<string> {
     if (!this.apiKey) {
       throw new Error('OpenRouter API key não configurada');
     }
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'BASE Agency SaaS',
-      },
-      body: JSON.stringify({
+    const inputText = messages.map(m => m.content).join(' ');
+    const inputTokens = estimateTokens(inputText);
+    const startTime = performance.now();
+
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'BASE Agency SaaS',
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: messages,
+          temperature: options.temperature ?? 0.7,
+          max_tokens: options.maxTokens ?? 4096,
+          stream: false,
+        }),
+      });
+
+      const responseTimeMs = Math.round(performance.now() - startTime);
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        tokenTracker.trackChat({
+          userId: options.userId || 'anonymous',
+          userName: options.userName,
+          provider: 'openrouter',
+          model: model,
+          inputTokens,
+          outputTokens: 0,
+          responseTimeMs,
+          success: false,
+          error: error.error?.message || `Erro ${response.status}`
+        });
+        throw new Error(error.error?.message || `Erro ${response.status}`);
+      }
+
+      const data: OpenRouterResponse = await response.json();
+      const outputText = data.choices[0]?.message?.content || '';
+      const outputTokens = data.usage?.completion_tokens || estimateTokens(outputText);
+      const actualInputTokens = data.usage?.prompt_tokens || inputTokens;
+
+      tokenTracker.trackChat({
+        userId: options.userId || 'anonymous',
+        userName: options.userName,
+        provider: 'openrouter',
         model: model,
-        messages: messages,
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 4096,
-        stream: false,
-      }),
-    });
+        inputTokens: actualInputTokens,
+        outputTokens,
+        responseTimeMs,
+        success: true
+      });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error?.message || `Erro ${response.status}`);
+      return outputText;
+    } catch (error) {
+      const responseTimeMs = Math.round(performance.now() - startTime);
+      tokenTracker.trackChat({
+        userId: options.userId || 'anonymous',
+        userName: options.userName,
+        provider: 'openrouter',
+        model: model,
+        inputTokens,
+        outputTokens: 0,
+        responseTimeMs,
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro desconhecido'
+      });
+      throw error;
     }
-
-    const data: OpenRouterResponse = await response.json();
-    return data.choices[0]?.message?.content || '';
   }
 
   // Chat com streaming
