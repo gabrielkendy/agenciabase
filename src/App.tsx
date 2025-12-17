@@ -14,6 +14,7 @@ import { AdminPage } from './pages/AdminPage';
 import { CreatorStudioPage } from './pages/CreatorStudioPage';
 import { ChatbotPage } from './pages/ChatbotPage';
 import { LoginPage } from './pages/LoginPage';
+import { ContentCreatorPage } from './pages/ContentCreatorPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { Icons } from './components/Icons';
 import { useStore } from './store';
@@ -127,6 +128,7 @@ function AppContent() {
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/studio" element={<ProtectedRoute><CreatorStudioPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+          <Route path="/content/:demandId" element={<ProtectedRoute><ContentCreatorPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

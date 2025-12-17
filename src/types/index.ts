@@ -399,6 +399,7 @@ export interface APIConfig {
   // Creator Studio APIs
   falai_key?: string;
   elevenlabs_key?: string;
+  freepik_key?: string;
 }
 
 export interface LateConnectedAccount {

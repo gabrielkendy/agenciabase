@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
-import { DemandStatus, ContentType, SocialChannel, Conversation } from '../types';
+import { DemandStatus, ContentType, SocialChannel, Conversation, ChatProject } from '../types';
 import { sendMessageToGemini } from '../services/geminiService';
 import { openrouterService } from '../services/openrouterService';
 import clsx from 'clsx';
@@ -34,13 +34,26 @@ interface ChatParticipant {
   type: 'agent' | 'member';
 }
 
+// Default project colors
+const PROJECT_COLORS = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
+  '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280'
+];
+
+const PROJECT_ICONS = ['📁', '💼', '🎯', '🚀', '💡', '📊', '🎨', '✨', '📝', '🔥'];
+
 export const ChatPage = () => {
-  const { 
+  const {
     agents, clients, apiConfig, messages, conversations, teamMembers,
-    addConversation, updateConversation,
-    addMessage, addDemand, addNotification 
+    addConversation, updateConversation, deleteConversation,
+    addMessage, addDemand, addNotification
   } = useStore();
-  
+
+  // Projects state (in-memory for now, could be added to store)
+  const [projects, setProjects] = useState<ChatProject[]>([
+    { id: 'default', user_id: '1', name: 'Geral', description: 'Conversas gerais', color: '#6b7280', icon: '💬', created_at: new Date().toISOString() }
+  ]);
+
   // State
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
@@ -50,25 +63,35 @@ export const ChatPage = () => {
   const [pendingDemands, setPendingDemands] = useState<ParsedDemand[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>('');
   const [searchHistory, setSearchHistory] = useState('');
-  const [selectedProject] = useState<string>('default');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('default');
   const [sendToSofiaContent, setSendToSofiaContent] = useState<string | null>(null);
-  
+
+  // Projects UI
+  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [editingProject, setEditingProject] = useState<ChatProject | null>(null);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectColor, setNewProjectColor] = useState(PROJECT_COLORS[0]);
+  const [newProjectIcon, setNewProjectIcon] = useState(PROJECT_ICONS[0]);
+
   // Attachments
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Mentions
   const [showMentions, setShowMentions] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
-  
+
   // Participants modal
   const [showParticipantsModal, setShowParticipantsModal] = useState(false);
-  
+
   // Mobile state
   const [showHistorySidebar, setShowHistorySidebar] = useState(false);
   const [showAgentsSidebar, setShowAgentsSidebar] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  
+
+  // Collapsed projects
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -91,14 +114,26 @@ export const ChatPage = () => {
 
   // Get current conversation messages
   const currentMessages = messages.filter((m) => m.conversation_id === currentConversationId);
-  
-  // Get conversations for selected project
-  const projectConversations = useMemo(() => {
-    return conversations
-      .filter(c => !selectedProject || c.project_id === selectedProject || (!c.project_id && selectedProject === 'default'))
+
+  // Get conversations grouped by project
+  const conversationsByProject = useMemo(() => {
+    const grouped: Record<string, Conversation[]> = {};
+    projects.forEach(p => { grouped[p.id] = []; });
+
+    conversations
       .filter(c => !searchHistory || c.title.toLowerCase().includes(searchHistory.toLowerCase()))
-      .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());
-  }, [conversations, selectedProject, searchHistory]);
+      .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+      .forEach(conv => {
+        const projectId = conv.project_id || 'default';
+        if (grouped[projectId]) {
+          grouped[projectId].push(conv);
+        } else {
+          grouped['default']?.push(conv);
+        }
+      });
+
+    return grouped;
+  }, [conversations, projects, searchHistory]);
 
   // Sofia agent
   const sofiaAgent = agents.find((a) => a.name === 'Sofia');
@@ -123,7 +158,7 @@ export const ChatPage = () => {
   // Filtered mentions
   const filteredMentions = useMemo(() => {
     if (!mentionSearch) return allParticipants;
-    return allParticipants.filter(p => 
+    return allParticipants.filter(p =>
       p.name.toLowerCase().includes(mentionSearch.toLowerCase())
     );
   }, [allParticipants, mentionSearch]);
@@ -141,6 +176,68 @@ export const ChatPage = () => {
     setSelectedAgents(activeAgentIds);
   };
 
+  const toggleProjectCollapse = (projectId: string) => {
+    setCollapsedProjects(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(projectId)) {
+        newSet.delete(projectId);
+      } else {
+        newSet.add(projectId);
+      }
+      return newSet;
+    });
+  };
+
+  // Project management
+  const createProject = () => {
+    if (!newProjectName.trim()) {
+      toast.error('Digite um nome para o projeto');
+      return;
+    }
+    const newProject: ChatProject = {
+      id: `project_${Date.now()}`,
+      user_id: '1',
+      name: newProjectName.trim(),
+      color: newProjectColor,
+      icon: newProjectIcon,
+      created_at: new Date().toISOString(),
+    };
+    setProjects(prev => [...prev, newProject]);
+    setShowNewProjectModal(false);
+    setNewProjectName('');
+    setNewProjectColor(PROJECT_COLORS[0]);
+    setNewProjectIcon(PROJECT_ICONS[0]);
+    toast.success('Projeto criado!');
+  };
+
+  const updateProject = () => {
+    if (!editingProject || !newProjectName.trim()) return;
+    setProjects(prev => prev.map(p =>
+      p.id === editingProject.id
+        ? { ...p, name: newProjectName.trim(), color: newProjectColor, icon: newProjectIcon }
+        : p
+    ));
+    setEditingProject(null);
+    setNewProjectName('');
+    toast.success('Projeto atualizado!');
+  };
+
+  const deleteProject = (projectId: string) => {
+    if (projectId === 'default') {
+      toast.error('Não é possível excluir o projeto padrão');
+      return;
+    }
+    // Move conversations to default project
+    conversations.filter(c => c.project_id === projectId).forEach(conv => {
+      updateConversation(conv.id, { project_id: 'default' });
+    });
+    setProjects(prev => prev.filter(p => p.id !== projectId));
+    if (selectedProjectId === projectId) {
+      setSelectedProjectId('default');
+    }
+    toast.success('Projeto excluído!');
+  };
+
   // Handle file upload
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -156,10 +253,10 @@ export const ChatPage = () => {
       const reader = new FileReader();
       reader.onload = () => {
         const url = reader.result as string;
-        const type = file.type.startsWith('image/') ? 'image' 
-                   : file.type.startsWith('video/') ? 'video' 
+        const type = file.type.startsWith('image/') ? 'image'
+                   : file.type.startsWith('video/') ? 'video'
                    : 'file';
-        
+
         const attachment: ChatAttachment = {
           id: crypto.randomUUID(),
           type,
@@ -168,13 +265,13 @@ export const ChatPage = () => {
           size: file.size,
           mimeType: file.type,
         };
-        
+
         setAttachments(prev => [...prev, attachment]);
         toast.success(`${file.name} anexado!`);
       };
       reader.readAsDataURL(file);
     }
-    
+
     e.target.value = '';
   };
 
@@ -207,17 +304,17 @@ export const ChatPage = () => {
     const textBeforeCursor = input.slice(0, cursorPos);
     const textAfterCursor = input.slice(cursorPos);
     const atIndex = textBeforeCursor.lastIndexOf('@');
-    
+
     const newText = textBeforeCursor.slice(0, atIndex) + `@${participant.name} ` + textAfterCursor;
     setInput(newText);
     setShowMentions(false);
     setMentionSearch('');
-    
+
     // Auto-add to participants if member
     if (participant.type === 'member' && !selectedMembers.includes(participant.id)) {
       setSelectedMembers(prev => [...prev, participant.id]);
     }
-    
+
     inputRef.current?.focus();
   };
 
@@ -228,7 +325,7 @@ export const ChatPage = () => {
     }
     const id = addConversation({
       user_id: '1',
-      project_id: selectedProject,
+      project_id: selectedProjectId,
       title: 'Nova conversa',
       agent_ids: selectedAgents,
       is_team_chat: selectedAgents.length > 1 || selectedMembers.length > 0,
@@ -243,19 +340,37 @@ export const ChatPage = () => {
   const selectConversation = (conv: Conversation) => {
     setCurrentConversationId(conv.id);
     setSelectedAgents(conv.agent_ids);
+    setSelectedProjectId(conv.project_id || 'default');
     setShowHistorySidebar(false);
   };
 
+  const handleDeleteConversation = (convId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('Deseja excluir esta conversa?')) {
+      deleteConversation(convId);
+      if (currentConversationId === convId) {
+        setCurrentConversationId(null);
+      }
+      toast.success('Conversa excluída!');
+    }
+  };
 
+  const moveConversationToProject = (convId: string, projectId: string) => {
+    updateConversation(convId, { project_id: projectId });
+    toast.success('Conversa movida!');
+  };
+
+  // Use to avoid lint warning
+  void moveConversationToProject;
 
   useEffect(() => {
     if (sendToSofiaContent && currentConversationId && sofiaAgent) {
       const content = sendToSofiaContent;
       setSendToSofiaContent(null);
-      addMessage({ 
-        conversation_id: currentConversationId, 
-        role: 'user', 
-        content: `Crie uma demanda no Kanban com base neste conteúdo:\n\n${content}` 
+      addMessage({
+        conversation_id: currentConversationId,
+        role: 'user',
+        content: `Crie uma demanda no Kanban com base neste conteúdo:\n\n${content}`
       });
       setTimeout(() => {
         setInput('');
@@ -306,7 +421,7 @@ Responda APENAS com um JSON válido no formato:
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]) as ParsedDemand;
           setPendingDemands([parsed]);
-          
+
           addMessage({
             conversation_id: currentConversationId,
             role: 'assistant',
@@ -350,7 +465,7 @@ Responda APENAS com um JSON válido no formato:
       channels: demand.channels,
       tags: demand.tags,
       scheduled_date: demand.scheduled_date,
-      status: 'backlog' as DemandStatus,
+      status: 'rascunho' as DemandStatus,
       created_by_ai: true,
       media: [],
       internal_approvers: [],
@@ -390,18 +505,18 @@ Responda APENAS com um JSON válido no formato:
     }
 
     // Add user message with attachments
-    addMessage({ 
-      conversation_id: currentConversationId, 
-      role: 'user', 
+    addMessage({
+      conversation_id: currentConversationId,
+      role: 'user',
       content: messageContent,
       attachments: attachments.length > 0 ? attachments : undefined,
     });
 
     // Update conversation title
     if (currentMessages.length === 0) {
-      updateConversation(currentConversationId, { 
+      updateConversation(currentConversationId, {
         title: input.slice(0, 50) || 'Conversa com anexos',
-        updated_at: new Date().toISOString() 
+        updated_at: new Date().toISOString()
       });
     }
 
@@ -464,19 +579,19 @@ Responda APENAS com um JSON válido no formato:
           throw new Error('Configure uma API Key nas configurações');
         }
 
-        addMessage({ 
-          conversation_id: currentConversationId, 
-          role: 'assistant', 
-          content: selectedAgents.length > 1 ? `**${agent.name}:**\n${response}` : response 
+        addMessage({
+          conversation_id: currentConversationId,
+          role: 'assistant',
+          content: selectedAgents.length > 1 ? `**${agent.name}:**\n${response}` : response
         });
       }
 
       updateConversation(currentConversationId, { updated_at: new Date().toISOString() });
     } catch (error: any) {
-      addMessage({ 
-        conversation_id: currentConversationId, 
-        role: 'assistant', 
-        content: `❌ Erro: ${error.message}` 
+      addMessage({
+        conversation_id: currentConversationId,
+        role: 'assistant',
+        content: `❌ Erro: ${error.message}`
       });
     } finally {
       setIsLoading(false);
@@ -508,18 +623,25 @@ Responda APENAS com um JSON válido no formato:
         <div className="fixed inset-0 bg-black/50 z-40" onClick={() => { setShowHistorySidebar(false); setShowAgentsSidebar(false); }} />
       )}
 
-      {/* Sidebar - Histórico */}
+      {/* Sidebar - Histórico com Projetos */}
       <div className={clsx(
         'bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-300 z-50',
         isMobile ? (showHistorySidebar ? 'fixed inset-y-0 left-0 w-80' : 'hidden') : 'w-80'
       )}>
-        <div className="p-4 border-b border-gray-800">
+        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
           <h2 className="font-bold text-white flex items-center gap-2">
             <Icons.MessageSquare size={18} className="text-orange-400" />
             Conversas
           </h2>
+          <button
+            onClick={() => setShowNewProjectModal(true)}
+            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition"
+            title="Novo projeto"
+          >
+            <Icons.FolderPlus size={18} />
+          </button>
         </div>
-        
+
         <div className="p-3">
           <div className="relative mb-3">
             <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -531,7 +653,7 @@ Responda APENAS com um JSON válido no formato:
               className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none"
             />
           </div>
-          
+
           <button
             onClick={() => { setCurrentConversationId(null); setShowHistorySidebar(false); }}
             className="w-full py-3 bg-orange-500 hover:bg-orange-400 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition"
@@ -541,41 +663,109 @@ Responda APENAS com um JSON válido no formato:
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {projectConversations.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">
-              <Icons.MessageSquare size={32} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Nenhuma conversa</p>
-            </div>
-          ) : (
-            projectConversations.map((conv) => (
-              <button
-                key={conv.id}
-                onClick={() => selectConversation(conv)}
-                className={clsx(
-                  'w-full p-3 rounded-xl text-left transition group',
-                  currentConversationId === conv.id
-                    ? 'bg-orange-500/20 border border-orange-500'
-                    : 'bg-gray-800/50 border border-gray-700 hover:border-gray-600'
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="flex -space-x-1">
-                    {conv.agent_ids.slice(0, 3).map((id) => {
-                      const agent = agents.find((a) => a.id === id);
-                      return agent ? (
-                        <span key={id} className="text-lg">{agent.avatar}</span>
-                      ) : null;
-                    })}
-                  </div>
-                  <p className="text-sm font-medium text-white truncate flex-1">{conv.title}</p>
+        <div className="flex-1 overflow-y-auto p-3 space-y-4">
+          {projects.map((project) => {
+            const projectConvs = conversationsByProject[project.id] || [];
+            const isCollapsed = collapsedProjects.has(project.id);
+
+            return (
+              <div key={project.id} className="space-y-1">
+                {/* Project Header */}
+                <div
+                  className={clsx(
+                    'flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer group transition',
+                    selectedProjectId === project.id ? 'bg-gray-800' : 'hover:bg-gray-800/50'
+                  )}
+                  onClick={() => {
+                    setSelectedProjectId(project.id);
+                    toggleProjectCollapse(project.id);
+                  }}
+                >
+                  <span
+                    className="w-6 h-6 rounded flex items-center justify-center text-sm"
+                    style={{ backgroundColor: project.color + '30' }}
+                  >
+                    {project.icon}
+                  </span>
+                  <span className="flex-1 text-sm font-medium text-white truncate">{project.name}</span>
+                  <span className="text-xs text-gray-500">{projectConvs.length}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleProjectCollapse(project.id); }}
+                    className="p-1 text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 transition"
+                  >
+                    {isCollapsed ? <Icons.ChevronRight size={14} /> : <Icons.ChevronDown size={14} />}
+                  </button>
+                  {project.id !== 'default' && (
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingProject(project);
+                          setNewProjectName(project.name);
+                          setNewProjectColor(project.color);
+                          setNewProjectIcon(project.icon);
+                        }}
+                        className="p-1 text-gray-500 hover:text-white"
+                      >
+                        <Icons.Edit size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteProject(project.id); }}
+                        className="p-1 text-gray-500 hover:text-red-400"
+                      >
+                        <Icons.Trash size={12} />
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {new Date(conv.updated_at || conv.created_at).toLocaleDateString('pt-BR')}
-                </p>
-              </button>
-            ))
-          )}
+
+                {/* Conversations in project */}
+                {!isCollapsed && projectConvs.length > 0 && (
+                  <div className="ml-4 space-y-1">
+                    {projectConvs.map((conv) => (
+                      <div
+                        key={conv.id}
+                        onClick={() => selectConversation(conv)}
+                        className={clsx(
+                          'p-2 rounded-lg cursor-pointer transition group flex items-center gap-2',
+                          currentConversationId === conv.id
+                            ? 'bg-orange-500/20 border border-orange-500/50'
+                            : 'hover:bg-gray-800/50'
+                        )}
+                      >
+                        <div className="flex -space-x-1">
+                          {conv.agent_ids.slice(0, 2).map((id) => {
+                            const agent = agents.find((a) => a.id === id);
+                            return agent ? (
+                              <span key={id} className="text-sm">{agent.avatar}</span>
+                            ) : null;
+                          })}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-white truncate">{conv.title}</p>
+                          <p className="text-[10px] text-gray-500">
+                            {new Date(conv.updated_at || conv.created_at).toLocaleDateString('pt-BR')}
+                          </p>
+                        </div>
+                        <button
+                          onClick={(e) => handleDeleteConversation(conv.id, e)}
+                          className="p-1 text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
+                        >
+                          <Icons.Trash size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!isCollapsed && projectConvs.length === 0 && (
+                  <div className="ml-4 text-xs text-gray-600 py-2">
+                    Nenhuma conversa
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -588,7 +778,7 @@ Responda APENAS com um JSON válido no formato:
               <Icons.Menu size={20} />
             </button>
           )}
-          
+
           <div className="flex items-center gap-2">
             <div className="flex -space-x-2">
               {selectedAgents.slice(0, 4).map((id) => {
@@ -619,6 +809,17 @@ Responda APENAS com um JSON válido no formato:
           </div>
 
           <div className="flex-1" />
+
+          {/* Project selector */}
+          <select
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none"
+          >
+            {projects.map(p => (
+              <option key={p.id} value={p.id}>{p.icon} {p.name}</option>
+            ))}
+          </select>
 
           {/* Invite participants button */}
           <button
@@ -658,14 +859,14 @@ Responda APENAS com um JSON válido no formato:
                 <div className="text-6xl mb-4">💬</div>
                 <h2 className="text-2xl font-bold text-white mb-2">Chat com Agentes IA</h2>
                 <p className="text-gray-400 mb-6">
-                  Selecione agentes e membros da equipe, depois inicie uma conversa.
-                  Use @ para mencionar participantes.
+                  Selecione agentes e membros da equipe, organize em projetos,
+                  e inicie conversas. Use @ para mencionar participantes.
                 </p>
                 <div className="flex flex-wrap gap-2 justify-center mb-4">
-                  <span className="px-3 py-1 bg-orange-500/20 text-orange-400 rounded-full text-sm">📷 Envie fotos</span>
-                  <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm">🎬 Envie vídeos</span>
-                  <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm">📎 Envie arquivos</span>
-                  <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-sm">@ Mencione pessoas</span>
+                  <span className="px-3 py-1 bg-orange-500/20 text-orange-400 rounded-full text-sm">📁 Projetos</span>
+                  <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm">📷 Fotos</span>
+                  <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm">📎 Arquivos</span>
+                  <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-sm">@ Menções</span>
                 </div>
                 {selectedAgents.length > 0 && (
                   <button
@@ -912,7 +1113,7 @@ Responda APENAS com um JSON válido no formato:
         <div className="p-4 border-b border-gray-800">
           <h2 className="font-bold text-white">Agentes</h2>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {agents.filter(a => a.is_active).map((agent) => (
             <button
@@ -1072,6 +1273,92 @@ Responda APENAS com um JSON válido no formato:
                 className="w-full py-3 bg-orange-500 hover:bg-orange-400 text-white rounded-xl font-medium"
               >
                 Confirmar ({selectedAgents.length + selectedMembers.length} selecionados)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal - New/Edit Project */}
+      {(showNewProjectModal || editingProject) && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md">
+            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Icons.Folder size={20} className="text-orange-400" />
+                {editingProject ? 'Editar Projeto' : 'Novo Projeto'}
+              </h2>
+              <button
+                onClick={() => { setShowNewProjectModal(false); setEditingProject(null); setNewProjectName(''); }}
+                className="p-2 text-gray-400 hover:text-white"
+              >
+                <Icons.X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Nome do projeto</label>
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder="Ex: Campanha Black Friday"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Ícone</label>
+                <div className="flex flex-wrap gap-2">
+                  {PROJECT_ICONS.map(icon => (
+                    <button
+                      key={icon}
+                      onClick={() => setNewProjectIcon(icon)}
+                      className={clsx(
+                        'w-10 h-10 rounded-lg flex items-center justify-center text-lg transition border-2',
+                        newProjectIcon === icon
+                          ? 'border-orange-500 bg-orange-500/20'
+                          : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+                      )}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Cor</label>
+                <div className="flex flex-wrap gap-2">
+                  {PROJECT_COLORS.map(color => (
+                    <button
+                      key={color}
+                      onClick={() => setNewProjectColor(color)}
+                      className={clsx(
+                        'w-8 h-8 rounded-lg transition ring-2 ring-offset-2 ring-offset-gray-900',
+                        newProjectColor === color ? 'ring-white' : 'ring-transparent'
+                      )}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-800 flex gap-3">
+              <button
+                onClick={() => { setShowNewProjectModal(false); setEditingProject(null); setNewProjectName(''); }}
+                className="flex-1 py-3 text-gray-400 hover:text-white transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={editingProject ? updateProject : createProject}
+                className="flex-1 py-3 bg-orange-500 hover:bg-orange-400 text-white rounded-xl font-medium transition"
+              >
+                {editingProject ? 'Salvar' : 'Criar Projeto'}
               </button>
             </div>
           </div>

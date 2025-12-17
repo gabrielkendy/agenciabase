@@ -53,10 +53,13 @@ export const SettingsPage: React.FC = () => {
   const [testingOpenRouter, setTestingOpenRouter] = useState(false);
   const [showFalAi, setShowFalAi] = useState(false);
   const [showElevenLabs, setShowElevenLabs] = useState(false);
+  const [showFreepik, setShowFreepik] = useState(false);
   const [testingFalAi, setTestingFalAi] = useState(false);
   const [testingElevenLabs, setTestingElevenLabs] = useState(false);
+  const [testingFreepik, setTestingFreepik] = useState(false);
   const [falaiStatus, setFalaiStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [elevenlabsStatus, setElevenlabsStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [freepikStatus, setFreepikStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [openaiStatus, setOpenaiStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [geminiStatus, setGeminiStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [lateStatus, setLateStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -222,6 +225,41 @@ export const SettingsPage: React.FC = () => {
       toast.error('API Key inválida');
     } finally {
       setTestingElevenLabs(false);
+    }
+  };
+
+  // Test Freepik
+  const testFreepik = async () => {
+    if (!apiConfig.freepik_key) {
+      toast.error('Insira a API Key primeiro');
+      return;
+    }
+    setTestingFreepik(true);
+    try {
+      const response = await fetch('https://api.freepik.com/v1/ai/mystic', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'x-freepik-api-key': apiConfig.freepik_key,
+        },
+        body: JSON.stringify({
+          prompt: 'test',
+          num_images: 1,
+        }),
+      });
+      // 200 or 201 = success, 401/403 = bad key
+      if (response.status !== 401 && response.status !== 403) {
+        setFreepikStatus('success');
+        toast.success('Freepik conectado com sucesso!');
+      } else {
+        throw new Error('Invalid key');
+      }
+    } catch {
+      setFreepikStatus('error');
+      toast.error('API Key inválida');
+    } finally {
+      setTestingFreepik(false);
     }
   };
 
@@ -633,9 +671,61 @@ export const SettingsPage: React.FC = () => {
             </p>
           </div>
 
+          {/* Freepik */}
+          <div className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 rounded-xl md:rounded-2xl p-4 md:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg md:rounded-xl flex items-center justify-center text-white text-lg md:text-xl">🎨</div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-white">Freepik Mystic</h3>
+                    <span className="px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full font-medium">IMAGENS IA</span>
+                  </div>
+                  <p className="text-sm text-gray-400">Gere imagens com o modelo Mystic da Freepik</p>
+                </div>
+              </div>
+              {freepikStatus === 'success' && <span className="text-green-500 text-sm flex items-center gap-1"><Icons.Check size={16} /> Conectado</span>}
+            </div>
+
+            <div className="flex gap-3 mb-4">
+              <div className="flex-1 relative">
+                <input
+                  type={showFreepik ? 'text' : 'password'}
+                  value={apiConfig.freepik_key || ''}
+                  onChange={(e) => setApiConfig({ freepik_key: e.target.value })}
+                  placeholder="fpk_..."
+                  className="w-full px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white pr-10 focus:border-blue-500 focus:outline-none"
+                />
+                <button onClick={() => setShowFreepik(!showFreepik)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">
+                  {showFreepik ? <Icons.EyeOff size={18} /> : <Icons.Eye size={18} />}
+                </button>
+              </div>
+              <button
+                onClick={testFreepik}
+                disabled={testingFreepik}
+                className="px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 rounded-xl text-white font-medium transition"
+              >
+                {testingFreepik ? <Icons.Loader className="animate-spin" size={18} /> : 'Conectar'}
+              </button>
+            </div>
+
+            <div className="bg-gray-900/50 rounded-xl p-4">
+              <p className="text-sm text-gray-400 mb-2">✨ Recursos Disponíveis:</p>
+              <div className="flex flex-wrap gap-2">
+                {['Geração de Imagens', 'Estilos Artísticos', 'Upscale 4x', 'Remove Background', 'Sketch to Image'].map((feature) => (
+                  <span key={feature} className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-lg">{feature}</span>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-500 mt-3">
+              Obtenha sua chave em <a href="https://www.freepik.com/api" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">freepik.com/api</a> → API Keys
+            </p>
+          </div>
+
           <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
             <p className="text-sm text-purple-400">
-              🎬 <strong>Creator Studio:</strong> Use o FAL.ai para gerar imagens e vídeos, e o ElevenLabs para criar narrações profissionais. Acesse o Creator Studio no menu lateral para criar vídeos completos com IA!
+              🎬 <strong>Creator Studio:</strong> Use o Freepik ou FAL.ai para gerar imagens, e o ElevenLabs para criar narrações profissionais. Acesse o Creator Studio no menu lateral para criar vídeos completos com IA!
             </p>
           </div>
         </div>
