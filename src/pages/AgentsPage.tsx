@@ -453,7 +453,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({ editForm, setEditForm, handleSave
       <div>
         <label className="text-sm text-gray-400 mb-1 block">System Prompt</label>
         <textarea value={editForm.system_prompt || ''} onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })}
-          rows={8} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none resize-none font-mono text-sm"
+          rows={8} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none resize-y font-mono text-sm max-h-[400px] overflow-y-auto"
           placeholder="Defina a personalidade e instruções do agente..." />
         <p className="text-xs text-gray-500 mt-1">💡 O conhecimento treinado será adicionado automaticamente ao final.</p>
       </div>
