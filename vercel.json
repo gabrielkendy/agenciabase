@@ -9,21 +9,8 @@
       }
     }
   ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "https://base-agency-api.onrender.com/api/$1"
-    },
-    {
-      "src": "/approval/(.*)",
-      "dest": "/index.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
-  ],
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/api/(.*)", "destination": "https://base-agency-api.onrender.com/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
