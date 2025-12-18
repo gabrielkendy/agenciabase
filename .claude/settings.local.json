@@ -15,7 +15,13 @@
       "Bash(pkill:*)",
       "Bash(timeout 5 cat:*)",
       "Bash(grep:*)",
-      "Bash(timeout 5 npm run dev)"
+      "Bash(timeout 5 npm run dev)",
+      "Bash(git reset:*)",
+      "Bash(git restore:*)",
+      "Bash(git checkout:*)",
+      "Bash(npx vercel:*)",
+      "Bash(curl:*)",
+      "Bash(npm test:*)"
     ]
   }
 }
