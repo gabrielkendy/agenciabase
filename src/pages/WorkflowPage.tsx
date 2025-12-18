@@ -408,12 +408,6 @@ export const WorkflowPage = () => {
     }
   };
 
-  // Check if demand can be published
-  const canPublish = (demand: Demand) => {
-    // Can publish if approved or in final stages
-    return ['aprovado_agendado', 'aguardando_agendamento', 'concluido'].includes(demand.status);
-  };
-
   // Get selected client's approvers
   const selectedClient = getClient(form.client_id);
 
@@ -501,51 +495,117 @@ export const WorkflowPage = () => {
           </div>
         )}
         
-        {/* Action Buttons */}
+        {/* Action Buttons - FLUXO CORRETO */}
         <div className="flex gap-1 pt-2 border-t border-gray-700/50">
+          {/* RASCUNHO → Enviar para Redator ou Designer */}
           {demand.status === 'rascunho' && (
-            <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'conteudo', 'Enviado para Conteúdo!'); }} className="flex-1 text-xs bg-blue-500/20 text-blue-400 py-1.5 rounded-lg hover:bg-blue-500/30">
-              ✍️ Redator
-            </button>
+            <>
+              {demand.team_redator_id && (
+                <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'conteudo', 'Enviado para Redator!'); }} className="flex-1 text-xs bg-blue-500/20 text-blue-400 py-1.5 rounded-lg hover:bg-blue-500/30">
+                  ✍️ Redator
+                </button>
+              )}
+              {!demand.team_redator_id && demand.team_designer_id && (
+                <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'design', 'Enviado para Designer!'); }} className="flex-1 text-xs bg-purple-500/20 text-purple-400 py-1.5 rounded-lg hover:bg-purple-500/30">
+                  🎨 Designer
+                </button>
+              )}
+              {!demand.team_redator_id && !demand.team_designer_id && (
+                <button onClick={(e) => { e.stopPropagation(); openEditDemand(demand); }} className="flex-1 text-xs bg-gray-500/20 text-gray-400 py-1.5 rounded-lg hover:bg-gray-500/30">
+                  ⚙️ Configurar
+                </button>
+              )}
+            </>
           )}
+
+          {/* CONTEÚDO → Enviar para Designer */}
           {demand.status === 'conteudo' && (
-            <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'design', 'Enviado para Design!'); }} className="flex-1 text-xs bg-purple-500/20 text-purple-400 py-1.5 rounded-lg hover:bg-purple-500/30">
+            <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'design', 'Enviado para Designer!'); }} className="flex-1 text-xs bg-purple-500/20 text-purple-400 py-1.5 rounded-lg hover:bg-purple-500/30">
               🎨 Designer
             </button>
           )}
+
+          {/* DESIGN → Enviar para Aprovação (Interna ou Cliente) */}
           {demand.status === 'design' && (
-            <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, demand.skip_internal_approval ? 'aprovacao_cliente' : 'aprovacao_interna', 'Enviado para Aprovação!'); }} className="flex-1 text-xs bg-yellow-500/20 text-yellow-400 py-1.5 rounded-lg hover:bg-yellow-500/30">
-              👀 Aprovar
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const nextStatus = demand.skip_internal_approval
+                  ? (demand.skip_external_approval ? 'aprovado_agendado' : 'aprovacao_cliente')
+                  : 'aprovacao_interna';
+                const msg = demand.skip_internal_approval
+                  ? (demand.skip_external_approval ? 'Aprovado! Pronto para agendar.' : 'Enviado para Aprovação do Cliente!')
+                  : 'Enviado para Aprovação Interna!';
+                sendTo(demand.id, nextStatus, msg);
+              }}
+              className="flex-1 text-xs bg-yellow-500/20 text-yellow-400 py-1.5 rounded-lg hover:bg-yellow-500/30"
+            >
+              👀 Enviar p/ Aprovação
             </button>
           )}
+
+          {/* APROVAÇÃO INTERNA → Aprovar (vai para Cliente) ou Ajustes */}
           {demand.status === 'aprovacao_interna' && (
-            <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'aprovacao_cliente', 'Enviado para Cliente!'); }} className="flex-1 text-xs bg-orange-500/20 text-orange-400 py-1.5 rounded-lg hover:bg-orange-500/30">
-              🤝 Cliente
-            </button>
+            <>
+              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'ajustes', 'Solicitado ajustes!'); }} className="flex-1 text-xs bg-red-500/20 text-red-400 py-1.5 rounded-lg hover:bg-red-500/30">
+                🔄 Ajustes
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const nextStatus = demand.skip_external_approval ? 'aprovado_agendado' : 'aprovacao_cliente';
+                  const msg = demand.skip_external_approval ? 'Aprovado internamente! Pronto para agendar.' : 'Aprovado internamente! Enviado para Cliente.';
+                  sendTo(demand.id, nextStatus, msg);
+                }}
+                className="flex-1 text-xs bg-green-500/20 text-green-400 py-1.5 rounded-lg hover:bg-green-500/30"
+              >
+                ✅ Aprovar
+              </button>
+            </>
           )}
+
+          {/* APROVAÇÃO CLIENTE → Link + Aprovar ou Ajustes */}
           {demand.status === 'aprovacao_cliente' && (
             <>
               <button onClick={(e) => { e.stopPropagation(); setShowApprovalModal(demand.id); }} className="flex-1 text-xs bg-blue-500/20 text-blue-400 py-1.5 rounded-lg hover:bg-blue-500/30">
                 🔗 Link
               </button>
-              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, demand.auto_schedule ? 'aprovado_agendado' : 'aguardando_agendamento', 'Aprovado!'); }} className="flex-1 text-xs bg-green-500/20 text-green-400 py-1.5 rounded-lg hover:bg-green-500/30">
+              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, demand.auto_schedule ? 'aprovado_agendado' : 'aguardando_agendamento', 'Cliente aprovou! ✅'); }} className="flex-1 text-xs bg-green-500/20 text-green-400 py-1.5 rounded-lg hover:bg-green-500/30">
                 ✅ Aprovar
               </button>
             </>
           )}
+
+          {/* AJUSTES → Voltar para Conteúdo ou Design */}
           {demand.status === 'ajustes' && (
-            <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'conteudo', 'Voltou para ajustes!'); }} className="flex-1 text-xs bg-blue-500/20 text-blue-400 py-1.5 rounded-lg hover:bg-blue-500/30">
-              🔄 Revisar
-            </button>
+            <>
+              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'conteudo', 'Voltou para Redator!'); }} className="flex-1 text-xs bg-blue-500/20 text-blue-400 py-1.5 rounded-lg hover:bg-blue-500/30">
+                ✍️ Redator
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'design', 'Voltou para Designer!'); }} className="flex-1 text-xs bg-purple-500/20 text-purple-400 py-1.5 rounded-lg hover:bg-purple-500/30">
+                🎨 Designer
+              </button>
+            </>
           )}
+
+          {/* AGUARDANDO AGENDAMENTO → Agendar */}
           {demand.status === 'aguardando_agendamento' && (
             <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'aprovado_agendado', 'Agendado!'); }} className="flex-1 text-xs bg-emerald-500/20 text-emerald-400 py-1.5 rounded-lg hover:bg-emerald-500/30">
               📅 Agendar
             </button>
           )}
+
+          {/* APROVADO/AGENDADO → Publicar */}
           {demand.status === 'aprovado_agendado' && (
             <button onClick={(e) => { e.stopPropagation(); setShowPublishModal(demand); }} className="flex-1 text-xs bg-green-500/20 text-green-400 py-1.5 rounded-lg hover:bg-green-500/30">
               🚀 Publicar
+            </button>
+          )}
+
+          {/* CONCLUÍDO → Ver no histórico */}
+          {demand.status === 'concluido' && (
+            <button onClick={(e) => { e.stopPropagation(); setShowPreviewModal(demand); }} className="flex-1 text-xs bg-gray-500/20 text-gray-400 py-1.5 rounded-lg hover:bg-gray-500/30">
+              📋 Ver Detalhes
             </button>
           )}
         </div>
@@ -1561,23 +1621,187 @@ export const WorkflowPage = () => {
                 )}
               </div>
               
-              {/* Footer */}
+              {/* Footer - Ações Contextuais por Fase */}
               <div className="p-4 border-t border-gray-800 space-y-2">
-                {canPublish(demand) && (
-                  <button 
-                    onClick={() => { setShowPublishModal(demand); }}
-                    className="w-full py-3 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white rounded-xl transition font-medium flex items-center justify-center gap-2"
+                {/* RASCUNHO */}
+                {demand.status === 'rascunho' && (
+                  <button
+                    onClick={() => { openEditDemand(demand); setShowPreviewModal(null); }}
+                    className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition font-medium"
                   >
-                    <Icons.Rocket size={18} />
-                    Publicar nas Redes
+                    Configurar Demanda
                   </button>
                 )}
-                <button 
-                  onClick={() => { openEditDemand(demand); setShowPreviewModal(null); }}
-                  className={`w-full py-3 ${canPublish(demand) ? 'bg-gray-700 hover:bg-gray-600' : 'bg-orange-500 hover:bg-orange-600'} text-white rounded-xl transition font-medium`}
-                >
-                  {canPublish(demand) ? 'Editar conteúdo' : 'Criar conteúdo'}
-                </button>
+
+                {/* CONTEÚDO - Redator trabalhando */}
+                {demand.status === 'conteudo' && (
+                  <>
+                    <button
+                      onClick={() => { openEditDemand(demand); setShowPreviewModal(null); }}
+                      className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition font-medium"
+                    >
+                      Criar conteúdo
+                    </button>
+                    <button
+                      onClick={() => { sendTo(demand.id, 'design', 'Enviado para Designer!'); setShowPreviewModal(null); }}
+                      className="w-full py-3 bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30 rounded-xl transition font-medium"
+                    >
+                      Enviar para Designer 🎨
+                    </button>
+                  </>
+                )}
+
+                {/* DESIGN - Designer trabalhando */}
+                {demand.status === 'design' && (
+                  <>
+                    <button
+                      onClick={() => { openEditDemand(demand); setShowPreviewModal(null); }}
+                      className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition font-medium"
+                    >
+                      Editar Design
+                    </button>
+                    <button
+                      onClick={() => {
+                        const nextStatus = demand.skip_internal_approval
+                          ? (demand.skip_external_approval ? 'aprovado_agendado' : 'aprovacao_cliente')
+                          : 'aprovacao_interna';
+                        const msg = demand.skip_internal_approval
+                          ? (demand.skip_external_approval ? 'Aprovado! Pronto para agendar.' : 'Enviado para Aprovação do Cliente!')
+                          : 'Enviado para Aprovação Interna!';
+                        sendTo(demand.id, nextStatus, msg);
+                        setShowPreviewModal(null);
+                      }}
+                      className="w-full py-3 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/30 rounded-xl transition font-medium"
+                    >
+                      Enviar para Aprovação 👀
+                    </button>
+                  </>
+                )}
+
+                {/* APROVAÇÃO INTERNA */}
+                {demand.status === 'aprovacao_interna' && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const nextStatus = demand.skip_external_approval ? 'aprovado_agendado' : 'aprovacao_cliente';
+                        const msg = demand.skip_external_approval ? 'Aprovado! Pronto para agendar.' : 'Aprovado internamente! Enviado para Cliente.';
+                        sendTo(demand.id, nextStatus, msg);
+                        setShowPreviewModal(null);
+                      }}
+                      className="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl transition font-medium flex items-center justify-center gap-2"
+                    >
+                      ✅ Aprovar Internamente
+                    </button>
+                    <button
+                      onClick={() => { sendTo(demand.id, 'ajustes', 'Solicitado ajustes!'); setShowPreviewModal(null); }}
+                      className="w-full py-3 bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 rounded-xl transition font-medium"
+                    >
+                      Solicitar Ajustes 🔄
+                    </button>
+                  </>
+                )}
+
+                {/* APROVAÇÃO CLIENTE */}
+                {demand.status === 'aprovacao_cliente' && (
+                  <>
+                    <button
+                      onClick={() => { sendTo(demand.id, demand.auto_schedule ? 'aprovado_agendado' : 'aguardando_agendamento', 'Cliente aprovou! ✅'); setShowPreviewModal(null); }}
+                      className="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl transition font-medium flex items-center justify-center gap-2"
+                    >
+                      ✅ Cliente Aprovou
+                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => { setShowApprovalModal(demand.id); setShowPreviewModal(null); }}
+                        className="py-3 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-xl transition font-medium text-sm"
+                      >
+                        🔗 Enviar Link
+                      </button>
+                      <button
+                        onClick={() => { sendTo(demand.id, 'ajustes', 'Cliente solicitou ajustes!'); setShowPreviewModal(null); }}
+                        className="py-3 bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 rounded-xl transition font-medium text-sm"
+                      >
+                        🔄 Ajustes
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* AJUSTES */}
+                {demand.status === 'ajustes' && (
+                  <>
+                    <button
+                      onClick={() => { openEditDemand(demand); setShowPreviewModal(null); }}
+                      className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition font-medium"
+                    >
+                      Editar Demanda
+                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => { sendTo(demand.id, 'conteudo', 'Voltou para Redator!'); setShowPreviewModal(null); }}
+                        className="py-3 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-xl transition font-medium text-sm"
+                      >
+                        ✍️ Redator
+                      </button>
+                      <button
+                        onClick={() => { sendTo(demand.id, 'design', 'Voltou para Designer!'); setShowPreviewModal(null); }}
+                        className="py-3 bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30 rounded-xl transition font-medium text-sm"
+                      >
+                        🎨 Designer
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* AGUARDANDO AGENDAMENTO */}
+                {demand.status === 'aguardando_agendamento' && (
+                  <>
+                    <button
+                      onClick={() => { sendTo(demand.id, 'aprovado_agendado', 'Agendado!'); setShowPreviewModal(null); }}
+                      className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl transition font-medium flex items-center justify-center gap-2"
+                    >
+                      📅 Confirmar Agendamento
+                    </button>
+                    <button
+                      onClick={() => { openEditDemand(demand); setShowPreviewModal(null); }}
+                      className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl transition font-medium"
+                    >
+                      Editar Data/Hora
+                    </button>
+                  </>
+                )}
+
+                {/* APROVADO/AGENDADO */}
+                {demand.status === 'aprovado_agendado' && (
+                  <>
+                    <button
+                      onClick={() => { setShowPublishModal(demand); }}
+                      className="w-full py-3 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white rounded-xl transition font-medium flex items-center justify-center gap-2"
+                    >
+                      <Icons.Rocket size={18} />
+                      Publicar nas Redes
+                    </button>
+                    <button
+                      onClick={() => { openEditDemand(demand); setShowPreviewModal(null); }}
+                      className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl transition font-medium"
+                    >
+                      Editar Antes de Publicar
+                    </button>
+                  </>
+                )}
+
+                {/* CONCLUÍDO */}
+                {demand.status === 'concluido' && (
+                  <div className="text-center py-4">
+                    <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-2">
+                      <span className="text-2xl">✅</span>
+                    </div>
+                    <p className="text-green-400 font-medium">Publicado com sucesso!</p>
+                    <p className="text-gray-500 text-xs mt-1">
+                      {demand.published_date && new Date(demand.published_date).toLocaleString('pt-BR')}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -257,55 +257,75 @@ export const AgentsPage: React.FC = () => {
   return (
     <div className="h-full bg-gray-950 flex">
       {/* Sidebar */}
-      <div className="w-72 border-r border-gray-800 flex flex-col">
+      <div className="w-80 border-r border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-800">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Icons.Bot size={20} className="text-orange-400" />
                 Agentes IA
               </h2>
-              <p className="text-xs text-gray-500 mt-1">{agents.length} agentes</p>
+              <p className="text-xs text-gray-500 mt-1">{agents.length} agentes configurados</p>
             </div>
-            {isAdmin && (
-              <div className="flex gap-1">
-                <button onClick={() => setShowImportAssistant(true)} className="p-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg" title="Importar OpenAI Assistant">
-                  <Icons.Download size={18} />
-                </button>
-                <button onClick={() => setShowNewAgentModal(true)} className="p-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg" title="Criar Agente">
-                  <Icons.Plus size={18} />
-                </button>
-              </div>
-            )}
           </div>
+
+          {/* Botões de Ação - Mais Visíveis */}
+          {isAdmin && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setShowNewAgentModal(true)}
+                className="flex items-center justify-center gap-2 px-3 py-2.5 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium text-sm transition"
+              >
+                <Icons.Plus size={16} />
+                Novo Agente
+              </button>
+              <button
+                onClick={() => setShowImportAssistant(true)}
+                className="flex items-center justify-center gap-2 px-3 py-2.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg font-medium text-sm transition"
+              >
+                <Icons.Download size={16} />
+                Importar
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* Lista de Agentes */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {agents.map(agent => (
-            <button 
-              key={agent.id} 
-              onClick={() => selectAgent(agent)} 
-              className={clsx(
-                'w-full p-3 rounded-xl text-left transition flex items-center gap-3', 
-                selectedAgent?.id === agent.id 
-                  ? 'bg-orange-500/20 border border-orange-500' 
-                  : 'bg-gray-800/50 border border-gray-700 hover:border-gray-600'
-              )}
-            >
-              <span className="text-2xl">{agent.avatar}</span>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-medium text-white text-sm truncate">{agent.name}</p>
-                  {isAgentTrained(agent) && (
-                    <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] rounded font-medium">
-                      🧠 TREINADO
-                    </span>
-                  )}
+          {agents.length === 0 ? (
+            <div className="text-center py-8">
+              <Icons.Bot size={40} className="mx-auto text-gray-600 mb-3" />
+              <p className="text-gray-500 text-sm">Nenhum agente criado</p>
+              <p className="text-gray-600 text-xs mt-1">Crie seu primeiro agente!</p>
+            </div>
+          ) : (
+            agents.map(agent => (
+              <button
+                key={agent.id}
+                onClick={() => selectAgent(agent)}
+                className={clsx(
+                  'w-full p-3 rounded-xl text-left transition flex items-center gap-3',
+                  selectedAgent?.id === agent.id
+                    ? 'bg-orange-500/20 border border-orange-500'
+                    : 'bg-gray-800/50 border border-gray-700 hover:border-gray-600'
+                )}
+              >
+                <span className="text-2xl">{agent.avatar}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-white text-sm truncate">{agent.name}</p>
+                    {isAgentTrained(agent) && (
+                      <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] rounded font-medium flex-shrink-0">
+                        🧠
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 truncate">{agent.role}</p>
                 </div>
-                <p className="text-xs text-gray-500 truncate">{agent.role}</p>
-              </div>
-              <div className={clsx('w-2 h-2 rounded-full', agent.is_active ? 'bg-green-500' : 'bg-gray-500')} />
-            </button>
-          ))}
+                <div className={clsx('w-2 h-2 rounded-full flex-shrink-0', agent.is_active ? 'bg-green-500' : 'bg-gray-500')} />
+              </button>
+            ))
+          )}
         </div>
       </div>
 
@@ -468,85 +488,153 @@ export const AgentsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal: Importar OpenAI Assistant */}
+      {/* Modal: Importar OpenAI Assistant - MELHORADO */}
       {showImportAssistant && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-xl">
             <div className="p-6 border-b border-gray-800">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <span className="text-2xl">🤖</span>
+                <span className="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center text-xl">🤖</span>
                 Importar OpenAI Assistant
               </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Importe um Assistant já criado na OpenAI
+              <p className="text-sm text-gray-500 mt-2">
+                Importe um Assistant da sua conta OpenAI pelo ID
               </p>
             </div>
+
             <div className="p-6 space-y-4">
-              {!importedAssistant ? (
+              {!apiConfig.openai_key ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Icons.Key size={32} className="text-red-400" />
+                  </div>
+                  <h3 className="text-white font-medium mb-2">API Key não configurada</h3>
+                  <p className="text-gray-500 text-sm mb-4">
+                    Configure sua OpenAI API Key em Configurações para importar assistants.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowImportAssistant(false);
+                      // Navegar para settings
+                    }}
+                    className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg text-sm"
+                  >
+                    Ir para Configurações
+                  </button>
+                </div>
+              ) : !importedAssistant ? (
                 <>
+                  {/* Input do ID */}
                   <div>
                     <label className="text-sm text-gray-400 mb-2 block">ID do Assistant</label>
-                    <input
-                      type="text"
-                      value={assistantIdInput}
-                      onChange={(e) => setAssistantIdInput(e.target.value)}
-                      placeholder="asst_xxxxxxxxxxxxxxxx"
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white font-mono text-sm focus:border-green-500 focus:outline-none"
-                    />
-                    <p className="text-xs text-gray-600 mt-2">
-                      Encontre o ID no painel da OpenAI: platform.openai.com/assistants
-                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={assistantIdInput}
+                        onChange={(e) => setAssistantIdInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleImportAssistant()}
+                        placeholder="asst_xxxxxxxxxxxxxxxx"
+                        className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white font-mono text-sm focus:border-green-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={handleImportAssistant}
+                        disabled={importingAssistant || !assistantIdInput.trim()}
+                        className="px-4 py-3 bg-green-500 hover:bg-green-400 disabled:opacity-50 text-white rounded-lg font-medium flex items-center gap-2"
+                      >
+                        {importingAssistant ? (
+                          <Icons.Loader size={18} className="animate-spin" />
+                        ) : (
+                          <Icons.Search size={18} />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
-                  {!apiConfig.openai_key && (
-                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                      <p className="text-red-400 text-sm">
-                        ⚠️ Configure a API Key da OpenAI em Configurações primeiro
-                      </p>
-                    </div>
-                  )}
+                  {/* Instruções */}
+                  <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                    <h4 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+                      <Icons.Info size={16} className="text-blue-400" />
+                      Como encontrar o ID
+                    </h4>
+                    <ol className="text-xs text-gray-400 space-y-2">
+                      <li className="flex items-start gap-2">
+                        <span className="w-5 h-5 bg-gray-700 rounded-full flex items-center justify-center text-[10px] text-white flex-shrink-0">1</span>
+                        Acesse <a href="https://platform.openai.com/assistants" target="_blank" rel="noopener noreferrer" className="text-green-400 hover:underline">platform.openai.com/assistants</a>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="w-5 h-5 bg-gray-700 rounded-full flex items-center justify-center text-[10px] text-white flex-shrink-0">2</span>
+                        Clique no Assistant desejado
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="w-5 h-5 bg-gray-700 rounded-full flex items-center justify-center text-[10px] text-white flex-shrink-0">3</span>
+                        Copie o ID (começa com "asst_")
+                      </li>
+                    </ol>
+                  </div>
                 </>
               ) : (
+                /* Assistant Encontrado */
                 <div className="space-y-4">
-                  <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-xl">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center text-2xl">
+                  <div className="p-5 bg-green-500/10 border border-green-500/30 rounded-xl">
+                    <div className="flex items-start gap-4">
+                      <div className="w-14 h-14 bg-green-500/20 rounded-xl flex items-center justify-center text-3xl flex-shrink-0">
                         🤖
                       </div>
-                      <div>
-                        <p className="text-white font-bold">{importedAssistant.name || 'Sem nome'}</p>
-                        <p className="text-xs text-gray-400 font-mono">{importedAssistant.id}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-lg font-bold text-white">{importedAssistant.name || 'Sem nome'}</p>
+                        <p className="text-xs text-gray-400 font-mono mt-0.5">{importedAssistant.id}</p>
+                        {importedAssistant.description && (
+                          <p className="text-sm text-gray-300 mt-2">{importedAssistant.description}</p>
+                        )}
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          <span className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300 font-medium">
+                            {importedAssistant.model}
+                          </span>
+                          {importedAssistant.tools.map((tool, i) => (
+                            <span key={i} className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">
+                              {tool.type}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    {importedAssistant.description && (
-                      <p className="text-sm text-gray-300">{importedAssistant.description}</p>
-                    )}
-                    <div className="flex gap-2 mt-3">
-                      <span className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-400">
-                        {importedAssistant.model}
-                      </span>
-                      {importedAssistant.tools.map((tool, i) => (
-                        <span key={i} className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">
-                          {tool.type}
-                        </span>
-                      ))}
                     </div>
                   </div>
 
+                  {/* Preview das Instruções */}
                   {importedAssistant.instructions && (
                     <div>
-                      <label className="text-sm text-gray-400 mb-1 block">Instruções</label>
-                      <div className="bg-gray-800 rounded-lg p-3 max-h-32 overflow-y-auto">
-                        <p className="text-xs text-gray-300 whitespace-pre-wrap">
-                          {importedAssistant.instructions.substring(0, 500)}
-                          {importedAssistant.instructions.length > 500 && '...'}
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm text-gray-400">Instruções</label>
+                        <span className="text-xs text-gray-600">
+                          {importedAssistant.instructions.length.toLocaleString()} chars
+                        </span>
+                      </div>
+                      <div className="bg-gray-800 rounded-lg p-3 max-h-40 overflow-y-auto border border-gray-700">
+                        <p className="text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
+                          {importedAssistant.instructions.substring(0, 800)}
+                          {importedAssistant.instructions.length > 800 && (
+                            <span className="text-gray-500">... (mais {importedAssistant.instructions.length - 800} caracteres)</span>
+                          )}
                         </p>
                       </div>
                     </div>
                   )}
+
+                  {/* Botão de Voltar */}
+                  <button
+                    onClick={() => {
+                      setImportedAssistant(null);
+                      setAssistantIdInput('');
+                    }}
+                    className="text-xs text-gray-500 hover:text-white flex items-center gap-1"
+                  >
+                    <Icons.ChevronLeft size={14} />
+                    Buscar outro ID
+                  </button>
                 </div>
               )}
             </div>
+
             <div className="p-6 border-t border-gray-800 flex gap-3 justify-end">
               <button
                 onClick={() => {
@@ -554,30 +642,17 @@ export const AgentsPage: React.FC = () => {
                   setAssistantIdInput('');
                   setImportedAssistant(null);
                 }}
-                className="px-4 py-2 text-gray-400 hover:text-white"
+                className="px-4 py-2 text-gray-400 hover:text-white transition"
               >
                 Cancelar
               </button>
-              {!importedAssistant ? (
-                <button
-                  onClick={handleImportAssistant}
-                  disabled={importingAssistant || !assistantIdInput.trim()}
-                  className="px-6 py-2 bg-green-500 hover:bg-green-400 disabled:opacity-50 text-white rounded-lg font-medium flex items-center gap-2"
-                >
-                  {importingAssistant ? (
-                    <Icons.Loader size={18} className="animate-spin" />
-                  ) : (
-                    <Icons.Search size={18} />
-                  )}
-                  Buscar Assistant
-                </button>
-              ) : (
+              {importedAssistant && (
                 <button
                   onClick={handleConfirmImportAssistant}
-                  className="px-6 py-2 bg-green-500 hover:bg-green-400 text-white rounded-lg font-medium flex items-center gap-2"
+                  className="px-6 py-2.5 bg-green-500 hover:bg-green-400 text-white rounded-lg font-medium flex items-center gap-2 transition"
                 >
                   <Icons.Check size={18} />
-                  Importar
+                  Importar Assistant
                 </button>
               )}
             </div>
@@ -590,7 +665,7 @@ export const AgentsPage: React.FC = () => {
 
 
 // ============================================
-// CONFIG TAB COMPONENT
+// CONFIG TAB COMPONENT - UI APRIMORADA
 // ============================================
 interface ConfigTabProps {
   editForm: Partial<Agent>;
@@ -600,106 +675,179 @@ interface ConfigTabProps {
 }
 
 const ConfigTab: React.FC<ConfigTabProps> = ({ editForm, setEditForm, handleSaveAgent, isProviderConfigured }) => {
+  const [promptExpanded, setPromptExpanded] = useState(false);
+  const promptLength = (editForm.system_prompt || '').length;
+  const promptPreview = (editForm.system_prompt || '').substring(0, 200);
+
   return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <label className="text-sm text-gray-400 mb-2 block">Avatar</label>
-        <div className="flex flex-wrap gap-2">
-          {AGENT_AVATARS.map(avatar => (
-            <button key={avatar} onClick={() => setEditForm({ ...editForm, avatar })}
-              className={clsx('w-10 h-10 text-2xl rounded-lg border transition flex items-center justify-center',
-                editForm.avatar === avatar ? 'bg-orange-500/20 border-orange-500' : 'bg-gray-800 border-gray-700 hover:border-gray-600'
-              )}>{avatar}</button>
-          ))}
-        </div>
-      </div>
+    <div className="space-y-6">
+      {/* Seção 1: Identidade do Agente */}
+      <div className="bg-gray-800/50 rounded-xl p-5 border border-gray-700">
+        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+          <Icons.User size={16} className="text-orange-400" />
+          Identidade
+        </h3>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="text-sm text-gray-400 mb-1 block">Nome</label>
-          <input type="text" value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
+        {/* Avatar */}
+        <div className="mb-4">
+          <label className="text-xs text-gray-500 mb-2 block uppercase tracking-wider">Avatar</label>
+          <div className="flex flex-wrap gap-2">
+            {AGENT_AVATARS.map(avatar => (
+              <button key={avatar} onClick={() => setEditForm({ ...editForm, avatar })}
+                className={clsx('w-9 h-9 text-xl rounded-lg border transition flex items-center justify-center',
+                  editForm.avatar === avatar ? 'bg-orange-500/20 border-orange-500' : 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                )}>{avatar}</button>
+            ))}
+          </div>
         </div>
-        <div>
-          <label className="text-sm text-gray-400 mb-1 block">Função</label>
-          <input type="text" value={editForm.role || ''} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
-        </div>
-      </div>
-      
-      <div>
-        <label className="text-sm text-gray-400 mb-1 block">Descrição</label>
-        <input type="text" value={editForm.description || ''} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none" />
-      </div>
-      
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-sm text-gray-400">System Prompt</label>
-          <span className="text-xs text-gray-600">{(editForm.system_prompt || '').length.toLocaleString()} caracteres</span>
-        </div>
-        <textarea value={editForm.system_prompt || ''} onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })}
-          rows={5} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none resize-y font-mono text-xs max-h-[180px] overflow-y-auto leading-relaxed"
-          placeholder="Defina a personalidade e instruções do agente..." />
-        <p className="text-xs text-gray-500 mt-1">💡 O conhecimento treinado será adicionado automaticamente ao final.</p>
-      </div>
 
-      <div className="space-y-4">
-        <div>
-          <label className="text-sm text-gray-400 mb-2 block">Provider de IA</label>
-          <div className="grid grid-cols-3 gap-3">
-            <button onClick={() => setEditForm({ ...editForm, provider: 'openrouter', model: 'google/gemma-2-9b-it:free' })}
-              className={clsx('p-3 rounded-xl border transition text-left', editForm.provider === 'openrouter' ? 'bg-purple-500/20 border-purple-500' : 'bg-gray-800 border-gray-700 hover:border-gray-600')}>
-              <div className="flex items-center gap-2 mb-1"><span className="text-lg">🌐</span><span className="font-medium text-white text-sm">OpenRouter</span></div>
-              <p className="text-xs text-green-400">6 modelos GRATUITOS!</p>
-              {!isProviderConfigured('openrouter') && <p className="text-xs text-red-400 mt-1">⚠️ Não configurado</p>}
-            </button>
-            <button onClick={() => setEditForm({ ...editForm, provider: 'openai', model: 'gpt-4o-mini' })}
-              className={clsx('p-3 rounded-xl border transition text-left', editForm.provider === 'openai' ? 'bg-green-500/20 border-green-500' : 'bg-gray-800 border-gray-700 hover:border-gray-600')}>
-              <div className="flex items-center gap-2 mb-1"><span className="text-lg">🤖</span><span className="font-medium text-white text-sm">OpenAI</span></div>
-              <p className="text-xs text-gray-500">GPT-4o, 4o-mini</p>
-              {!isProviderConfigured('openai') && <p className="text-xs text-red-400 mt-1">⚠️ Não configurado</p>}
-            </button>
-            <button onClick={() => setEditForm({ ...editForm, provider: 'gemini', model: 'gemini-2.0-flash-exp' })}
-              className={clsx('p-3 rounded-xl border transition text-left', editForm.provider === 'gemini' ? 'bg-blue-500/20 border-blue-500' : 'bg-gray-800 border-gray-700 hover:border-gray-600')}>
-              <div className="flex items-center gap-2 mb-1"><span className="text-lg">✨</span><span className="font-medium text-white text-sm">Gemini</span></div>
-              <p className="text-xs text-gray-500">2.0 Flash, 1.5 Pro</p>
-              {!isProviderConfigured('gemini') && <p className="text-xs text-red-400 mt-1">⚠️ Não configurado</p>}
-            </button>
+        {/* Nome, Função, Descrição */}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">Nome</label>
+            <input type="text" value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">Função</label>
+            <input type="text" value={editForm.role || ''} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none" />
           </div>
         </div>
 
         <div>
-          <label className="text-sm text-gray-400 mb-2 block">Modelo</label>
+          <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">Descrição</label>
+          <input type="text" value={editForm.description || ''} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+            placeholder="Breve descrição do que o agente faz..."
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none" />
+        </div>
+      </div>
+
+      {/* Seção 2: System Prompt - COLAPSÁVEL */}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
+        <button
+          onClick={() => setPromptExpanded(!promptExpanded)}
+          className="w-full p-4 flex items-center justify-between hover:bg-gray-800/80 transition"
+        >
+          <div className="flex items-center gap-3">
+            <Icons.FileText size={16} className="text-purple-400" />
+            <span className="text-sm font-semibold text-white">System Prompt</span>
+            <span className="px-2 py-0.5 bg-gray-700 rounded text-xs text-gray-400">
+              {promptLength.toLocaleString()} chars
+            </span>
+          </div>
+          <Icons.ChevronDown size={18} className={clsx('text-gray-400 transition', promptExpanded && 'rotate-180')} />
+        </button>
+
+        {!promptExpanded ? (
+          <div className="px-4 pb-4">
+            <p className="text-xs text-gray-500 line-clamp-2 font-mono">
+              {promptPreview}{promptLength > 200 && '...'}
+            </p>
+          </div>
+        ) : (
+          <div className="px-4 pb-4">
+            <textarea
+              value={editForm.system_prompt || ''}
+              onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })}
+              rows={12}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-purple-500 focus:outline-none resize-y font-mono text-xs leading-relaxed"
+              placeholder="Defina a personalidade, instruções e comportamento do agente..."
+            />
+            <p className="text-xs text-gray-600 mt-2">
+              💡 Dica: O conhecimento treinado será adicionado automaticamente ao final do prompt.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Seção 3: Provider e Modelo */}
+      <div className="bg-gray-800/50 rounded-xl p-5 border border-gray-700">
+        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+          <Icons.Zap size={16} className="text-yellow-400" />
+          Modelo de IA
+        </h3>
+
+        {/* Providers */}
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <button onClick={() => setEditForm({ ...editForm, provider: 'openrouter', model: 'google/gemma-2-9b-it:free' })}
+            className={clsx('p-3 rounded-lg border transition text-left', editForm.provider === 'openrouter' ? 'bg-purple-500/20 border-purple-500' : 'bg-gray-900 border-gray-700 hover:border-gray-600')}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">🌐</span>
+              <span className="font-medium text-white text-sm">OpenRouter</span>
+            </div>
+            <p className="text-[10px] text-green-400">6 modelos GRATUITOS!</p>
+          </button>
+          <button onClick={() => setEditForm({ ...editForm, provider: 'openai', model: 'gpt-4o-mini' })}
+            className={clsx('p-3 rounded-lg border transition text-left', editForm.provider === 'openai' ? 'bg-green-500/20 border-green-500' : 'bg-gray-900 border-gray-700 hover:border-gray-600')}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">🤖</span>
+              <span className="font-medium text-white text-sm">OpenAI</span>
+            </div>
+            <p className="text-[10px] text-gray-500">GPT-4o, 4o-mini</p>
+          </button>
+          <button onClick={() => setEditForm({ ...editForm, provider: 'gemini', model: 'gemini-2.0-flash-exp' })}
+            className={clsx('p-3 rounded-lg border transition text-left', editForm.provider === 'gemini' ? 'bg-blue-500/20 border-blue-500' : 'bg-gray-900 border-gray-700 hover:border-gray-600')}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">✨</span>
+              <span className="font-medium text-white text-sm">Gemini</span>
+            </div>
+            <p className="text-[10px] text-gray-500">2.0 Flash, 1.5 Pro</p>
+          </button>
+        </div>
+
+        {/* Modelo Select */}
+        <div className="mb-4">
+          <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">Modelo</label>
           <select value={editForm.model || ''} onChange={(e) => setEditForm({ ...editForm, model: e.target.value as AIModel })}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:border-orange-500 focus:outline-none">
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:border-orange-500 focus:outline-none">
             {getModelsForProvider(editForm.provider || 'gemini').map(m => (
               <option key={m.id} value={m.id}>{m.isFree ? '🆓 ' : ''}{m.name}{m.description ? ` - ${m.description}` : ''}</option>
             ))}
           </select>
         </div>
+
+        {/* Temperatura */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-gray-500 uppercase tracking-wider">Temperatura</label>
+            <span className="text-xs text-white font-medium">
+              {editForm.temperature?.toFixed(1)}
+              <span className="text-gray-500 ml-1">
+                ({(editForm.temperature || 0.7) < 0.3 ? 'Preciso' : (editForm.temperature || 0.7) > 0.7 ? 'Criativo' : 'Balanceado'})
+              </span>
+            </span>
+          </div>
+          <input type="range" min="0" max="1" step="0.1" value={editForm.temperature || 0.7}
+            onChange={(e) => setEditForm({ ...editForm, temperature: parseFloat(e.target.value) })}
+            className="w-full accent-orange-500" />
+        </div>
+
+        {/* Status API */}
+        {!isProviderConfigured(editForm.provider || 'gemini') && (
+          <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
+            <p className="text-xs text-red-400">⚠️ Configure a API Key em Configurações</p>
+          </div>
+        )}
       </div>
 
-      <div>
-        <label className="text-sm text-gray-400 mb-1 block">
-          Temperatura: {editForm.temperature?.toFixed(1)} 
-          <span className="text-gray-600 ml-2">({(editForm.temperature || 0.7) < 0.3 ? 'Focado' : (editForm.temperature || 0.7) > 0.7 ? 'Criativo' : 'Balanceado'})</span>
-        </label>
-        <input type="range" min="0" max="1" step="0.1" value={editForm.temperature || 0.7}
-          onChange={(e) => setEditForm({ ...editForm, temperature: parseFloat(e.target.value) })} className="w-full accent-orange-500" />
-      </div>
+      {/* Seção 4: Status e Ações */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setEditForm({ ...editForm, is_active: !editForm.is_active })}
+            className={clsx('relative w-11 h-6 rounded-full transition', editForm.is_active ? 'bg-green-500' : 'bg-gray-700')}>
+            <div className={clsx('absolute top-1 w-4 h-4 rounded-full bg-white transition', editForm.is_active ? 'right-1' : 'left-1')} />
+          </button>
+          <span className="text-sm text-gray-400">
+            {editForm.is_active ? 'Ativo' : 'Inativo'}
+          </span>
+        </div>
 
-      <div className="flex items-center gap-3">
-        <button onClick={() => setEditForm({ ...editForm, is_active: !editForm.is_active })}
-          className={clsx('relative w-12 h-6 rounded-full transition', editForm.is_active ? 'bg-green-500' : 'bg-gray-700')}>
-          <div className={clsx('absolute top-1 w-4 h-4 rounded-full bg-white transition', editForm.is_active ? 'right-1' : 'left-1')} />
+        <button onClick={handleSaveAgent} className="px-5 py-2.5 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium flex items-center gap-2 transition">
+          <Icons.Save size={16} />
+          Salvar
         </button>
-        <span className="text-sm text-gray-400">Agente ativo</span>
       </div>
-
-      <button onClick={handleSaveAgent} className="px-6 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium flex items-center gap-2">
-        <Icons.Save size={16} />Salvar Alterações
-      </button>
     </div>
   );
 };
