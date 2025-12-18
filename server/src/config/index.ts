@@ -39,6 +39,9 @@ export const config = {
     google: {
       apiKey: process.env.GEMINI_API_KEY,
     },
+    replicate: {
+      apiKey: process.env.REPLICATE_API_KEY,
+    },
     elevenlabs: {
       apiKey: process.env.ELEVENLABS_API_KEY,
     },

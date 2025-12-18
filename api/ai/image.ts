@@ -218,29 +218,25 @@ export default async function handler(req: Request): Promise<Response> {
         images = oaiData.data?.map((img: any) => img.url) || [];
       }
 
-      // ============ GOOGLE GEMINI (Imagen 3) ============
+      // ============ GOOGLE GEMINI 2.0 (Imagen) ============
       else if (provider === 'google') {
-        const aspectRatioMap: Record<string, string> = {
-          '1:1': '1:1',
-          '16:9': '16:9',
-          '9:16': '9:16',
-          '4:3': '4:3',
-          '3:4': '3:4',
-        };
-
+        // Usar Gemini 2.0 Flash experimental com geração de imagem
         const geminiRes = await fetchWithRetry(
-          `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              instances: [{ prompt }],
-              parameters: {
-                sampleCount: numImages,
-                aspectRatio: aspectRatioMap[size] || '1:1',
-              },
+              contents: [{
+                parts: [{
+                  text: `Generate an image: ${prompt}`
+                }]
+              }],
+              generationConfig: {
+                responseModalities: ['TEXT', 'IMAGE'],
+              }
             }),
           },
           { maxRetries: 2, baseDelayMs: 1000 }
@@ -248,16 +244,29 @@ export default async function handler(req: Request): Promise<Response> {
 
         if (!geminiRes.ok) {
           const error = await geminiRes.json().catch(() => ({}));
-          throw new Error(error.error?.message || `Google Gemini error ${geminiRes.status}`);
+          const errorMsg = error.error?.message || `Google Gemini error ${geminiRes.status}`;
+
+          // Fallback message for image generation not available
+          if (errorMsg.includes('not found') || errorMsg.includes('not supported')) {
+            throw new Error('Google Imagen não disponível. Use FAL.ai Flux ou OpenAI DALL-E.');
+          }
+          throw new Error(errorMsg);
         }
 
         const geminiData = await geminiRes.json();
 
-        // Gemini returns images as base64
-        if (geminiData.predictions) {
-          images = geminiData.predictions.map((p: any) =>
-            `data:image/png;base64,${p.bytesBase64Encoded}`
-          );
+        // Extract images from response
+        if (geminiData.candidates?.[0]?.content?.parts) {
+          for (const part of geminiData.candidates[0].content.parts) {
+            if (part.inlineData?.mimeType?.startsWith('image/')) {
+              images.push(`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`);
+            }
+          }
+        }
+
+        // If no images, throw helpful error
+        if (images.length === 0) {
+          throw new Error('Google Gemini não gerou imagem. Use FAL.ai Flux (recomendado) ou OpenAI DALL-E.');
         }
       }
 

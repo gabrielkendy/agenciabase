@@ -2,9 +2,12 @@ import { BaseAIProvider } from './base.provider.js';
 import { FalAIProvider } from './falai.provider.js';
 import { OpenAIProvider } from './openai.provider.js';
 import { GoogleProvider } from './google.provider.js';
+import { FreepikProvider } from './freepik.provider.js';
+import { ReplicateProvider } from './replicate.provider.js';
+import { ElevenLabsProvider } from './elevenlabs.provider.js';
 import { config } from '../../config/index.js';
 
-export type AIProviderType = 'falai' | 'openai' | 'google' | 'freepik' | 'elevenlabs';
+export type AIProviderType = 'falai' | 'openai' | 'google' | 'freepik' | 'replicate' | 'elevenlabs';
 
 export class AIProviderFactory {
   /**
@@ -34,6 +37,24 @@ export class AIProviderFactory {
           model || 'imagen-3'
         );
 
+      case 'freepik':
+        return new FreepikProvider(
+          apiKey || config.providers.freepik.apiKey || '',
+          model || 'mystic'
+        );
+
+      case 'replicate':
+        return new ReplicateProvider(
+          apiKey || config.providers.replicate?.apiKey || '',
+          model || 'sdxl'
+        );
+
+      case 'elevenlabs':
+        return new ElevenLabsProvider(
+          apiKey || config.providers.elevenlabs.apiKey || '',
+          model || 'eleven_multilingual_v2'
+        );
+
       default:
         throw new Error(`Unknown provider: ${provider}`);
     }
@@ -52,6 +73,8 @@ export class AIProviderFactory {
         return config.providers.google.apiKey;
       case 'freepik':
         return config.providers.freepik.apiKey;
+      case 'replicate':
+        return config.providers.replicate?.apiKey;
       case 'elevenlabs':
         return config.providers.elevenlabs.apiKey;
       default:
@@ -71,10 +94,10 @@ export class AIProviderFactory {
    * Listar providers disponíveis
    */
   static getAvailableProviders(): AIProviderType[] {
-    const providers: AIProviderType[] = ['falai', 'openai', 'google', 'freepik', 'elevenlabs'];
+    const providers: AIProviderType[] = ['falai', 'openai', 'google', 'freepik', 'replicate', 'elevenlabs'];
     return providers.filter(p => this.isAvailable(p));
   }
 }
 
-export { BaseAIProvider, FalAIProvider, OpenAIProvider, GoogleProvider };
+export { BaseAIProvider, FalAIProvider, OpenAIProvider, GoogleProvider, FreepikProvider, ReplicateProvider, ElevenLabsProvider };
 export default AIProviderFactory;

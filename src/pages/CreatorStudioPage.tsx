@@ -15,7 +15,7 @@ type ReferenceType = 'style' | 'character' | 'upload';
 const IMAGE_MODELS = [
   // ============ FAL.AI - FUNCIONA 100% ============
   { id: 'flux-schnell', name: 'Flux Schnell', provider: 'falai', icon: '⚡', description: 'Ultra rapido, gratis', badge: 'RECOMENDADO', badgeColor: 'green', model: 'fal-ai/flux/schnell' },
-  { id: 'flux-dev', name: 'Flux Dev', provider: 'falai', icon: '🎨', description: 'Alta qualidade', badge: 'POPULAR', badgeColor: 'blue', model: 'fal-ai/flux/dev' },
+  { id: 'flux-dev', name: 'Flux Dev', provider: 'falai', icon: '🎨', description: 'Alta qualidade', badge: '', badgeColor: '', model: 'fal-ai/flux/dev' },
   { id: 'flux-pro', name: 'Flux Pro 1.1', provider: 'falai', icon: '✨', description: 'Qualidade maxima', badge: 'PRO', badgeColor: 'purple', model: 'fal-ai/flux-pro/v1.1' },
   { id: 'flux-realism', name: 'Flux Realism', provider: 'falai', icon: '📷', description: 'Fotorrealismo', badge: 'NEW', badgeColor: 'green', model: 'fal-ai/flux-realism' },
   { id: 'stable-diffusion-xl', name: 'SDXL', provider: 'falai', icon: '🖼️', description: 'Stable Diffusion XL', badge: '', badgeColor: '', model: 'fal-ai/fast-sdxl' },
@@ -24,8 +24,8 @@ const IMAGE_MODELS = [
   // ============ OPENAI - FUNCIONA ============
   { id: 'dall-e-3', name: 'DALL-E 3', provider: 'openai', icon: '🤖', description: 'OpenAI - Muito preciso', badge: 'PREMIUM', badgeColor: 'blue' },
   { id: 'dall-e-2', name: 'DALL-E 2', provider: 'openai', icon: '🎨', description: 'OpenAI - Rapido', badge: '', badgeColor: '' },
-  // ============ GOOGLE GEMINI - FUNCIONA ============
-  { id: 'imagen-3', name: 'Imagen 3 (Gemini)', provider: 'google', icon: '🍌', description: 'Google Nano Banana', badge: 'NEW', badgeColor: 'green' },
+  // ============ GOOGLE GEMINI - EXPERIMENTAL ============
+  { id: 'imagen-3', name: 'Gemini 2.0 Image', provider: 'google', icon: '🔬', description: 'Google Experimental', badge: 'BETA', badgeColor: 'yellow' },
 ];
 
 // ========== VIDEO MODELS ==========
@@ -107,15 +107,35 @@ export const CreatorStudioPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // History
+  // History - com validação para limpar dados corrompidos
   const [history, setHistory] = useState<GeneratedItem[]>(() => {
     const saved = localStorage.getItem('studio_history');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+
+    try {
+      const parsed = JSON.parse(saved);
+      // Filtrar itens com URLs válidas (string não vazia) ou em geração
+      return parsed.filter((item: GeneratedItem) => {
+        // Se está gerando, manter
+        if (item.status === 'generating') return true;
+        // Se tem erro, manter para mostrar
+        if (item.status === 'error') return true;
+        // Se tem URL válida (string não vazia e não é objeto)
+        if (item.url && typeof item.url === 'string' && item.url.length > 0 && !item.url.includes('[object')) {
+          return true;
+        }
+        // Remover itens corrompidos
+        console.log('[History] Removendo item corrompido:', item.id, item.url);
+        return false;
+      });
+    } catch {
+      return [];
+    }
   });
 
   // Image state
   const [imagePrompt, setImagePrompt] = useState('');
-  const [imageModel, setImageModel] = useState('flux-schnell'); // FAL.ai Flux Schnell - funciona 100%
+  const [imageModel, setImageModel] = useState('flux-schnell'); // FAL.ai Flux Schnell - ultra rapido
   const [imageSize, setImageSize] = useState('1:1');
   const [imageQuality, setImageQuality] = useState('2k');
   const [numImages, setNumImages] = useState(1);
@@ -601,50 +621,37 @@ export const CreatorStudioPage = () => {
             {/* Model Dropdown Menu */}
             {showModelSelector && (
               <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl max-h-[400px] overflow-y-auto">
-                {IMAGE_MODELS.map((model) => {
-                  // Check if API key is configured for this provider
-                  const hasApiKey =
-                    (model.provider === 'falai' && apiConfig.falai_key) ||
-                    (model.provider === 'openai' && apiConfig.openai_key) ||
-                    (model.provider === 'google' && apiConfig.gemini_key);
-
-                  return (
-                    <button
-                      key={model.id}
-                      onClick={() => { setImageModel(model.id); setShowModelSelector(false); }}
-                      className={clsx(
-                        'w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-left',
-                        imageModel === model.id && 'bg-gray-800',
-                        !hasApiKey && 'opacity-50'
-                      )}
-                    >
-                      <span className="text-xl">{model.icon}</span>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-white font-medium text-sm">{model.name}</p>
-                          {model.badge && (
-                            <span className={clsx(
-                              'text-[10px] px-1.5 py-0.5 rounded font-medium',
-                              model.badgeColor === 'green' ? 'bg-green-500/20 text-green-400' :
-                              model.badgeColor === 'blue' ? 'bg-blue-500/20 text-blue-400' :
-                              model.badgeColor === 'purple' ? 'bg-purple-500/20 text-purple-400' :
-                              'bg-gray-500/20 text-gray-400'
-                            )}>
-                              {model.badge}
-                            </span>
-                          )}
-                          {!hasApiKey && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
-                              SEM API KEY
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500">{model.description}</p>
+                {IMAGE_MODELS.map((model) => (
+                  <button
+                    key={model.id}
+                    onClick={() => { setImageModel(model.id); setShowModelSelector(false); }}
+                    className={clsx(
+                      'w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-left',
+                      imageModel === model.id && 'bg-gray-800'
+                    )}
+                  >
+                    <span className="text-xl">{model.icon}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-white font-medium text-sm">{model.name}</p>
+                        {model.badge && (
+                          <span className={clsx(
+                            'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                            model.badgeColor === 'green' ? 'bg-green-500/20 text-green-400' :
+                            model.badgeColor === 'blue' ? 'bg-blue-500/20 text-blue-400' :
+                            model.badgeColor === 'purple' ? 'bg-purple-500/20 text-purple-400' :
+                            model.badgeColor === 'yellow' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-gray-500/20 text-gray-400'
+                          )}>
+                            {model.badge}
+                          </span>
+                        )}
                       </div>
-                      {imageModel === model.id && <Icons.Check size={16} className="text-green-400" />}
-                    </button>
-                  );
-                })}
+                      <p className="text-xs text-gray-500">{model.description}</p>
+                    </div>
+                    {imageModel === model.id && <Icons.Check size={16} className="text-green-400" />}
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -956,10 +963,10 @@ export const CreatorStudioPage = () => {
         </div>
 
         {/* Footer - Generate Button + Options (Freepik style) */}
-        <div className="p-4 border-t border-gray-800 space-y-3">
+        <div className="p-4 border-t border-gray-800 space-y-3 flex-shrink-0">
           {/* Options Row */}
           {activeTab === 'image' && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {/* Quantity */}
               <div className="flex items-center gap-1 bg-gray-800 rounded-lg px-2 py-1.5">
                 <button
@@ -1131,8 +1138,13 @@ export const CreatorStudioPage = () => {
                     </div>
                   ) : item.type === 'video' ? (
                     <video src={item.url} className="aspect-square object-cover" controls poster={item.thumbnail} />
-                  ) : (
+                  ) : item.url && typeof item.url === 'string' && (item.url.startsWith('http') || item.url.startsWith('data:')) ? (
                     <img src={item.url} alt={item.prompt} className="aspect-square object-cover" />
+                  ) : (
+                    <div className="aspect-square flex flex-col items-center justify-center gap-2 bg-gray-800">
+                      <Icons.Image size={24} className="text-gray-500 opacity-50" />
+                      <p className="text-xs text-gray-500">Imagem inválida</p>
+                    </div>
                   )}
 
                   {/* Overlay Actions */}
