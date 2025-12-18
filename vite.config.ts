@@ -13,36 +13,64 @@ export default defineConfig({
     minify: 'terser',
     terserOptions: {
       compress: {
-        drop_console: true, // Remove console.log em producao
-        drop_debugger: true
+        drop_console: true,
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'console.info', 'console.debug'],
+        passes: 2,
+      },
+      mangle: {
+        safari10: true,
+      },
+      format: {
+        comments: false,
       }
     },
     rollupOptions: {
       output: {
-        // Code splitting por vendor
-        manualChunks: {
+        // Improved code splitting por modulo
+        manualChunks: (id) => {
           // React core
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          if (id.includes('node_modules/react') ||
+              id.includes('node_modules/react-dom') ||
+              id.includes('node_modules/react-router-dom')) {
+            return 'vendor-react';
+          }
           // UI libraries
-          'vendor-ui': ['lucide-react', 'clsx', 'react-hot-toast', 'zustand'],
+          if (id.includes('lucide-react') ||
+              id.includes('clsx') ||
+              id.includes('react-hot-toast')) {
+            return 'vendor-ui';
+          }
+          // State management
+          if (id.includes('zustand')) {
+            return 'vendor-state';
+          }
           // Utilities
-          'vendor-utils': ['uuid', 'date-fns'],
+          if (id.includes('uuid') || id.includes('date-fns')) {
+            return 'vendor-utils';
+          }
         },
-        // Nomes de arquivos com hash para cache
         chunkFileNames: 'assets/[name]-[hash].js',
         entryFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     },
-    // Aumentar limite de warning (mas ainda mostra)
-    chunkSizeWarningLimit: 600
+    chunkSizeWarningLimit: 500,
+    target: 'es2020',
+    cssCodeSplit: true,
+    assetsInlineLimit: 4096,
   },
-  // Otimizacoes de performance
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', 'zustand']
+    include: ['react', 'react-dom', 'react-router-dom', 'zustand', 'clsx']
   },
-  // Define para producao
   define: {
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version || '5.0.0')
+  },
+  preview: {
+    port: 4173,
+    host: true
+  },
+  esbuild: {
+    legalComments: 'none',
   }
 })
