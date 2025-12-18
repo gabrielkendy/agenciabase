@@ -17,7 +17,7 @@ import {
 } from '../lib/edgeUtils';
 
 export const config = {
-  runtime: 'nodejs18.x', // Videos precisam de mais tempo
+  runtime: 'nodejs',
   maxDuration: 300, // 5 minutos max
 };
 

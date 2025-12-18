@@ -9,11 +9,9 @@ import {
   validate,
   structuredLog,
   edgeRateLimit,
-  jsonResponse,
   errorResponse,
   successResponse,
   handleCors,
-  corsHeaders,
   generateRequestId,
   securityHeaders,
 } from '../lib/edgeUtils';

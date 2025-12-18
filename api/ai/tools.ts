@@ -17,7 +17,7 @@ import {
 } from '../lib/edgeUtils';
 
 export const config = {
-  runtime: 'nodejs18.x',
+  runtime: 'nodejs',
   maxDuration: 120, // 2 minutos
 };
 
