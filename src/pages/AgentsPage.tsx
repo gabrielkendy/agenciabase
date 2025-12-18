@@ -680,153 +680,147 @@ const ConfigTab: React.FC<ConfigTabProps> = ({ editForm, setEditForm, handleSave
   const promptPreview = (editForm.system_prompt || '').substring(0, 200);
 
   return (
-    <div className="space-y-6">
-      {/* Seção 1: Identidade do Agente */}
-      <div className="bg-gray-800/50 rounded-xl p-5 border border-gray-700">
-        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-          <Icons.User size={16} className="text-orange-400" />
+    <div className="space-y-4">
+      {/* Seção 1: Identidade do Agente - COMPACTA */}
+      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+        <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+          <Icons.User size={14} className="text-orange-400" />
           Identidade
         </h3>
 
-        {/* Avatar */}
-        <div className="mb-4">
-          <label className="text-xs text-gray-500 mb-2 block uppercase tracking-wider">Avatar</label>
-          <div className="flex flex-wrap gap-2">
-            {AGENT_AVATARS.map(avatar => (
-              <button key={avatar} onClick={() => setEditForm({ ...editForm, avatar })}
-                className={clsx('w-9 h-9 text-xl rounded-lg border transition flex items-center justify-center',
-                  editForm.avatar === avatar ? 'bg-orange-500/20 border-orange-500' : 'bg-gray-800 border-gray-700 hover:border-gray-600'
-                )}>{avatar}</button>
-            ))}
+        {/* Avatar + Nome/Função em linha */}
+        <div className="flex gap-4 mb-3">
+          {/* Avatar Seletor Compacto */}
+          <div className="flex-shrink-0">
+            <div className="grid grid-cols-5 gap-1">
+              {AGENT_AVATARS.map(avatar => (
+                <button key={avatar} onClick={() => setEditForm({ ...editForm, avatar })}
+                  className={clsx('w-7 h-7 text-base rounded border transition flex items-center justify-center',
+                    editForm.avatar === avatar ? 'bg-orange-500/20 border-orange-500' : 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                  )}>{avatar}</button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* Nome, Função, Descrição */}
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">Nome</label>
-            <input type="text" value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">Função</label>
-            <input type="text" value={editForm.role || ''} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none" />
+          {/* Nome e Função */}
+          <div className="flex-1 grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-gray-500 mb-0.5 block uppercase">Nome</label>
+              <input type="text" value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-white text-sm focus:border-orange-500 focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-[10px] text-gray-500 mb-0.5 block uppercase">Função</label>
+              <input type="text" value={editForm.role || ''} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-white text-sm focus:border-orange-500 focus:outline-none" />
+            </div>
           </div>
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">Descrição</label>
+          <label className="text-[10px] text-gray-500 mb-0.5 block uppercase">Descrição</label>
           <input type="text" value={editForm.description || ''} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
             placeholder="Breve descrição do que o agente faz..."
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none" />
+            className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-white text-sm focus:border-orange-500 focus:outline-none" />
         </div>
       </div>
 
-      {/* Seção 2: System Prompt - COLAPSÁVEL */}
+      {/* Seção 2: System Prompt - COMPACTO COM ALTURA FIXA */}
       <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
         <button
           onClick={() => setPromptExpanded(!promptExpanded)}
-          className="w-full p-4 flex items-center justify-between hover:bg-gray-800/80 transition"
+          className="w-full p-3 flex items-center justify-between hover:bg-gray-800/80 transition"
         >
-          <div className="flex items-center gap-3">
-            <Icons.FileText size={16} className="text-purple-400" />
-            <span className="text-sm font-semibold text-white">System Prompt</span>
-            <span className="px-2 py-0.5 bg-gray-700 rounded text-xs text-gray-400">
+          <div className="flex items-center gap-2">
+            <Icons.FileText size={14} className="text-purple-400" />
+            <span className="text-sm font-medium text-white">System Prompt</span>
+            <span className="px-1.5 py-0.5 bg-gray-700 rounded text-[10px] text-gray-400">
               {promptLength.toLocaleString()} chars
             </span>
           </div>
-          <Icons.ChevronDown size={18} className={clsx('text-gray-400 transition', promptExpanded && 'rotate-180')} />
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-500">
+              {promptExpanded ? 'Recolher' : 'Expandir'}
+            </span>
+            <Icons.ChevronDown size={16} className={clsx('text-gray-400 transition', promptExpanded && 'rotate-180')} />
+          </div>
         </button>
 
         {!promptExpanded ? (
-          <div className="px-4 pb-4">
-            <p className="text-xs text-gray-500 line-clamp-2 font-mono">
-              {promptPreview}{promptLength > 200 && '...'}
+          <div className="px-3 pb-3">
+            <p className="text-[11px] text-gray-500 line-clamp-1 font-mono bg-gray-900/50 rounded px-2 py-1">
+              {promptPreview || 'Nenhum prompt definido...'}{promptLength > 200 && '...'}
             </p>
           </div>
         ) : (
-          <div className="px-4 pb-4">
+          <div className="px-3 pb-3">
             <textarea
               value={editForm.system_prompt || ''}
               onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })}
-              rows={12}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-purple-500 focus:outline-none resize-y font-mono text-xs leading-relaxed"
+              className="w-full h-40 max-h-40 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-purple-500 focus:outline-none resize-none font-mono text-xs leading-relaxed overflow-y-auto"
               placeholder="Defina a personalidade, instruções e comportamento do agente..."
             />
-            <p className="text-xs text-gray-600 mt-2">
-              💡 Dica: O conhecimento treinado será adicionado automaticamente ao final do prompt.
+            <p className="text-[10px] text-gray-600 mt-1">
+              💡 O conhecimento treinado será adicionado automaticamente.
             </p>
           </div>
         )}
       </div>
 
-      {/* Seção 3: Provider e Modelo */}
-      <div className="bg-gray-800/50 rounded-xl p-5 border border-gray-700">
-        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-          <Icons.Zap size={16} className="text-yellow-400" />
+      {/* Seção 3: Provider e Modelo - COMPACTA */}
+      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+        <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+          <Icons.Zap size={14} className="text-yellow-400" />
           Modelo de IA
         </h3>
 
-        {/* Providers */}
-        <div className="grid grid-cols-3 gap-2 mb-4">
+        {/* Providers em linha compacta */}
+        <div className="flex gap-2 mb-3">
           <button onClick={() => setEditForm({ ...editForm, provider: 'openrouter', model: 'google/gemma-2-9b-it:free' })}
-            className={clsx('p-3 rounded-lg border transition text-left', editForm.provider === 'openrouter' ? 'bg-purple-500/20 border-purple-500' : 'bg-gray-900 border-gray-700 hover:border-gray-600')}>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">🌐</span>
-              <span className="font-medium text-white text-sm">OpenRouter</span>
-            </div>
-            <p className="text-[10px] text-green-400">6 modelos GRATUITOS!</p>
+            className={clsx('flex-1 p-2 rounded-lg border transition text-center', editForm.provider === 'openrouter' ? 'bg-purple-500/20 border-purple-500' : 'bg-gray-900 border-gray-700 hover:border-gray-600')}>
+            <span className="text-base">🌐</span>
+            <span className="text-xs text-white ml-1">OpenRouter</span>
+            <span className="text-[9px] text-green-400 block">GRÁTIS</span>
           </button>
           <button onClick={() => setEditForm({ ...editForm, provider: 'openai', model: 'gpt-4o-mini' })}
-            className={clsx('p-3 rounded-lg border transition text-left', editForm.provider === 'openai' ? 'bg-green-500/20 border-green-500' : 'bg-gray-900 border-gray-700 hover:border-gray-600')}>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">🤖</span>
-              <span className="font-medium text-white text-sm">OpenAI</span>
-            </div>
-            <p className="text-[10px] text-gray-500">GPT-4o, 4o-mini</p>
+            className={clsx('flex-1 p-2 rounded-lg border transition text-center', editForm.provider === 'openai' ? 'bg-green-500/20 border-green-500' : 'bg-gray-900 border-gray-700 hover:border-gray-600')}>
+            <span className="text-base">🤖</span>
+            <span className="text-xs text-white ml-1">OpenAI</span>
+            <span className="text-[9px] text-gray-500 block">GPT-4o</span>
           </button>
           <button onClick={() => setEditForm({ ...editForm, provider: 'gemini', model: 'gemini-2.0-flash-exp' })}
-            className={clsx('p-3 rounded-lg border transition text-left', editForm.provider === 'gemini' ? 'bg-blue-500/20 border-blue-500' : 'bg-gray-900 border-gray-700 hover:border-gray-600')}>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">✨</span>
-              <span className="font-medium text-white text-sm">Gemini</span>
-            </div>
-            <p className="text-[10px] text-gray-500">2.0 Flash, 1.5 Pro</p>
+            className={clsx('flex-1 p-2 rounded-lg border transition text-center', editForm.provider === 'gemini' ? 'bg-blue-500/20 border-blue-500' : 'bg-gray-900 border-gray-700 hover:border-gray-600')}>
+            <span className="text-base">✨</span>
+            <span className="text-xs text-white ml-1">Gemini</span>
+            <span className="text-[9px] text-gray-500 block">2.0 Flash</span>
           </button>
         </div>
 
-        {/* Modelo Select */}
-        <div className="mb-4">
-          <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">Modelo</label>
-          <select value={editForm.model || ''} onChange={(e) => setEditForm({ ...editForm, model: e.target.value as AIModel })}
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:border-orange-500 focus:outline-none">
-            {getModelsForProvider(editForm.provider || 'gemini').map(m => (
-              <option key={m.id} value={m.id}>{m.isFree ? '🆓 ' : ''}{m.name}{m.description ? ` - ${m.description}` : ''}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Temperatura */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-xs text-gray-500 uppercase tracking-wider">Temperatura</label>
-            <span className="text-xs text-white font-medium">
-              {editForm.temperature?.toFixed(1)}
-              <span className="text-gray-500 ml-1">
-                ({(editForm.temperature || 0.7) < 0.3 ? 'Preciso' : (editForm.temperature || 0.7) > 0.7 ? 'Criativo' : 'Balanceado'})
-              </span>
-            </span>
+        {/* Modelo + Temperatura em linha */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-2">
+            <label className="text-[10px] text-gray-500 mb-0.5 block uppercase">Modelo</label>
+            <select value={editForm.model || ''} onChange={(e) => setEditForm({ ...editForm, model: e.target.value as AIModel })}
+              className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-white text-xs focus:border-orange-500 focus:outline-none">
+              {getModelsForProvider(editForm.provider || 'gemini').map(m => (
+                <option key={m.id} value={m.id}>{m.isFree ? '🆓 ' : ''}{m.name}</option>
+              ))}
+            </select>
           </div>
-          <input type="range" min="0" max="1" step="0.1" value={editForm.temperature || 0.7}
-            onChange={(e) => setEditForm({ ...editForm, temperature: parseFloat(e.target.value) })}
-            className="w-full accent-orange-500" />
+          <div>
+            <label className="text-[10px] text-gray-500 mb-0.5 block uppercase">
+              Temp: {editForm.temperature?.toFixed(1)}
+            </label>
+            <input type="range" min="0" max="1" step="0.1" value={editForm.temperature || 0.7}
+              onChange={(e) => setEditForm({ ...editForm, temperature: parseFloat(e.target.value) })}
+              className="w-full accent-orange-500 h-7" />
+          </div>
         </div>
 
         {/* Status API */}
         {!isProviderConfigured(editForm.provider || 'gemini') && (
-          <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
-            <p className="text-xs text-red-400">⚠️ Configure a API Key em Configurações</p>
+          <div className="mt-2 p-1.5 bg-red-500/10 border border-red-500/30 rounded">
+            <p className="text-[10px] text-red-400">⚠️ Configure API Key em Configurações</p>
           </div>
         )}
       </div>
