@@ -1,11 +1,21 @@
 // Edge Function: Health Check
 // Usado para monitoramento e load balancers
+// Features: Structured Logging, Security Headers
+
+import {
+  structuredLog,
+  successResponse,
+  securityHeaders,
+  generateRequestId,
+} from './lib/edgeUtils';
 
 export const config = {
   runtime: 'edge',
+  regions: ['gru1', 'iad1', 'sfo1', 'fra1'],
 };
 
 export default async function handler(req: Request): Promise<Response> {
+  const requestId = generateRequestId();
   const startTime = Date.now();
 
   // Basic health info
@@ -30,19 +40,23 @@ export default async function handler(req: Request): Promise<Response> {
 
   const responseTime = Date.now() - startTime;
 
-  return new Response(
-    JSON.stringify({
+  structuredLog.info('health', 'check_complete', {
+    region: health.region,
+    environment: health.environment,
+    integrationsConfigured: Object.values(integrations).filter(Boolean).length,
+    requestId,
+  });
+
+  return successResponse(
+    {
       ...health,
       integrations,
       responseTimeMs: responseTime,
-    }),
+    },
     {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-store',
-      },
+      ...securityHeaders,
+      'X-Request-ID': requestId,
+      'Cache-Control': 'no-store',
     }
   );
 }

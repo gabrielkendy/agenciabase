@@ -1,29 +1,28 @@
 // Edge Function: AI Voice Synthesis
 // Suporta: ElevenLabs
 // Runtime: Edge
+// Features: Retry, Circuit Breaker, Validation, Structured Logging
+
+import {
+  fetchWithRetry,
+  circuitBreaker,
+  validate,
+  structuredLog,
+  edgeRateLimit,
+  errorResponse,
+  successResponse,
+  handleCors,
+  generateRequestId,
+  securityHeaders,
+} from '../lib/edgeUtils';
 
 export const config = {
   runtime: 'edge',
   regions: ['gru1', 'iad1', 'sfo1', 'fra1'],
 };
 
-// Rate limiting
-const rateLimits = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(key: string, limit: number, windowMs: number): boolean {
-  const now = Date.now();
-  const record = rateLimits.get(key);
-  if (!record || now > record.resetAt) {
-    rateLimits.set(key, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (record.count >= limit) return false;
-  record.count++;
-  return true;
-}
-
 // ElevenLabs voices
-const VOICES = {
+const VOICES: Record<string, string> = {
   'daniel-pt': 'onwK4e9ZLuTAKqWW03F9', // Portugues BR
   'sarah-en': 'EXAVITQu4vr4xnSDxMaL',
   'rachel-en': '21m00Tcm4TlvDq8ikWAM',
@@ -39,138 +38,150 @@ interface VoiceRequest {
   similarityBoost?: number;
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  // CORS
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    });
+// Validate request
+function validateRequest(body: any): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  errors.push(...validate.required(body.text, 'text'));
+  errors.push(...validate.string(body.text, 'text', { minLength: 1, maxLength: 5000 }));
+
+  if (body.stability !== undefined) {
+    errors.push(...validate.number(body.stability, 'stability', { min: 0, max: 1 }));
   }
 
+  if (body.similarityBoost !== undefined) {
+    errors.push(...validate.number(body.similarityBoost, 'similarityBoost', { min: 0, max: 1 }));
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+export default async function handler(req: Request): Promise<Response> {
+  const requestId = generateRequestId();
+  const startTime = Date.now();
+
+  // CORS
+  const corsResponse = handleCors(req);
+  if (corsResponse) return corsResponse;
+
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return errorResponse('Method not allowed', 405);
   }
 
   try {
     const body: VoiceRequest = await req.json();
     const { text, voice, voiceId, stability = 0.5, similarityBoost = 0.75 } = body;
 
-    if (!text || text.trim().length === 0) {
-      return new Response(JSON.stringify({ error: 'text required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Limite de caracteres
-    if (text.length > 5000) {
-      return new Response(JSON.stringify({ error: 'Text too long. Max 5000 characters.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    // Validate
+    const validation = validateRequest(body);
+    if (!validation.valid) {
+      structuredLog.warn('voice', 'validation_failed', { errors: validation.errors, requestId });
+      return errorResponse(validation.errors.join(', '), 400);
     }
 
     // Rate limit
-    const ip = req.headers.get('x-forwarded-for') || 'unknown';
-    if (!checkRateLimit(`voice:${ip}`, 20, 60000)) {
-      return new Response(JSON.stringify({ error: 'Rate limit exceeded. Voice: 20/min' }), {
-        status: 429,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const rateLimit = edgeRateLimit.check(`voice:${ip}`, 20, 60000);
+
+    if (!rateLimit.allowed) {
+      structuredLog.warn('voice', 'rate_limit_exceeded', { ip, requestId });
+      return errorResponse('Rate limit exceeded. Voice: 20/min', 429, edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 20));
+    }
+
+    // Check circuit breaker
+    if (circuitBreaker.isOpen('elevenlabs')) {
+      structuredLog.warn('voice', 'circuit_open', { provider: 'elevenlabs', requestId });
+      return errorResponse('ElevenLabs temporarily unavailable. Try again later.', 503);
     }
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'ElevenLabs API key not configured' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return errorResponse('ElevenLabs API key not configured', 500);
     }
 
     // Resolve voice ID
-    const resolvedVoiceId = voiceId || (voice ? VOICES[voice as keyof typeof VOICES] : VOICES['daniel-pt']);
+    const resolvedVoiceId = voiceId || (voice ? VOICES[voice] : VOICES['daniel-pt']);
 
     if (!resolvedVoiceId) {
-      return new Response(JSON.stringify({ error: 'Invalid voice' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return errorResponse('Invalid voice', 400);
     }
 
-    const startTime = Date.now();
+    structuredLog.info('voice', 'request_start', { voiceId: resolvedVoiceId, textLength: text.length, requestId });
 
-    const elRes = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}`,
-      {
-        method: 'POST',
-        headers: {
-          'Accept': 'audio/mpeg',
-          'Content-Type': 'application/json',
-          'xi-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          text,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: {
-            stability,
-            similarity_boost: similarityBoost,
+    try {
+      const elRes = await fetchWithRetry(
+        `https://api.elevenlabs.io/v1/text-to-speech/${resolvedVoiceId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': apiKey,
           },
-        }),
+          body: JSON.stringify({
+            text,
+            model_id: 'eleven_multilingual_v2',
+            voice_settings: {
+              stability,
+              similarity_boost: similarityBoost,
+            },
+          }),
+        },
+        { maxRetries: 2, baseDelayMs: 1000 }
+      );
+
+      if (!elRes.ok) {
+        const error = await elRes.json().catch(() => ({}));
+        throw new Error(error.detail?.message || error.message || `ElevenLabs error ${elRes.status}`);
       }
-    );
 
-    if (!elRes.ok) {
-      const error = await elRes.json().catch(() => ({}));
-      throw new Error(error.detail?.message || error.message || `ElevenLabs error ${elRes.status}`);
-    }
+      // Record success
+      circuitBreaker.recordSuccess('elevenlabs');
 
-    // Return audio as base64 for easier handling
-    const audioBuffer = await elRes.arrayBuffer();
-    const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+      // Return audio as base64 for easier handling
+      const audioBuffer = await elRes.arrayBuffer();
+      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
 
-    const responseTime = Date.now() - startTime;
+      const responseTime = Date.now() - startTime;
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: {
+      structuredLog.request('voice', 'request_complete', startTime, true, {
+        voiceId: resolvedVoiceId,
+        textLength: text.length,
+        requestId,
+      });
+
+      return successResponse(
+        {
           audio: `data:audio/mpeg;base64,${base64Audio}`,
           format: 'mp3',
           voiceId: resolvedVoiceId,
           textLength: text.length,
           responseTimeMs: responseTime,
         },
-      }),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'public, max-age=86400', // Cache 24h
-        },
-      }
-    );
+        {
+          ...edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 20),
+          ...securityHeaders,
+          'X-Request-ID': requestId,
+          'Cache-Control': 'public, max-age=86400',
+        }
+      );
+
+    } catch (providerError: any) {
+      circuitBreaker.recordFailure('elevenlabs');
+      throw providerError;
+    }
+
   } catch (error: any) {
-    console.error('Voice API error:', error);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message || 'Internal server error',
-      }),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      }
-    );
+    const responseTime = Date.now() - startTime;
+
+    structuredLog.error('voice', 'request_failed', error, {
+      requestId,
+      duration: responseTime,
+    });
+
+    return errorResponse(error.message || 'Internal server error', 500, {
+      ...securityHeaders,
+      'X-Request-ID': requestId,
+    });
   }
 }

@@ -1,26 +1,25 @@
 // Edge Function: AI Video Generation
 // Suporta: Freepik (Kling, Seedance, PixVerse, MiniMax), FAL.ai
 // Runtime: Serverless (requer polling longo)
+// Features: Retry, Circuit Breaker, Validation, Structured Logging
+
+import {
+  fetchWithRetry,
+  circuitBreaker,
+  validate,
+  structuredLog,
+  edgeRateLimit,
+  errorResponse,
+  successResponse,
+  handleCors,
+  generateRequestId,
+  securityHeaders,
+} from '../lib/edgeUtils';
 
 export const config = {
   runtime: 'nodejs18.x', // Videos precisam de mais tempo
   maxDuration: 300, // 5 minutos max
 };
-
-// Rate limiting
-const rateLimits = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(key: string, limit: number, windowMs: number): boolean {
-  const now = Date.now();
-  const record = rateLimits.get(key);
-  if (!record || now > record.resetAt) {
-    rateLimits.set(key, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (record.count >= limit) return false;
-  record.count++;
-  return true;
-}
 
 // Freepik video endpoints
 const FREEPIK_VIDEO_ENDPOINTS: Record<string, string> = {
@@ -40,43 +39,58 @@ interface VideoRequest {
   duration?: string;
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  // CORS
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    });
+// Validate request
+function validateRequest(body: any): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  errors.push(...validate.required(body.provider, 'provider'));
+  errors.push(...validate.required(body.image, 'image'));
+  errors.push(...validate.enum(body.provider, 'provider', ['freepik', 'falai']));
+
+  // Validate image is base64 or URL
+  if (body.image && !body.image.startsWith('data:') && !body.image.startsWith('http')) {
+    errors.push(...validate.base64(body.image, 'image'));
   }
 
+  return { valid: errors.length === 0, errors };
+}
+
+export default async function handler(req: Request): Promise<Response> {
+  const requestId = generateRequestId();
+  const startTime = Date.now();
+
+  // CORS
+  const corsResponse = handleCors(req);
+  if (corsResponse) return corsResponse;
+
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return errorResponse('Method not allowed', 405);
   }
 
   try {
     const body: VideoRequest = await req.json();
     const { provider, model, image, prompt = 'Smooth natural motion', duration = '5' } = body;
 
-    if (!provider || !image) {
-      return new Response(JSON.stringify({ error: 'provider and image required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    // Validate
+    const validation = validateRequest(body);
+    if (!validation.valid) {
+      structuredLog.warn('video', 'validation_failed', { errors: validation.errors, requestId });
+      return errorResponse(validation.errors.join(', '), 400);
     }
 
     // Rate limit - mais restritivo para video
-    const ip = req.headers.get('x-forwarded-for') || 'unknown';
-    if (!checkRateLimit(`video:${ip}`, 10, 60000)) {
-      return new Response(JSON.stringify({ error: 'Rate limit exceeded. Videos: 10/min' }), {
-        status: 429,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const rateLimit = edgeRateLimit.check(`video:${ip}`, 10, 60000);
+
+    if (!rateLimit.allowed) {
+      structuredLog.warn('video', 'rate_limit_exceeded', { ip, requestId });
+      return errorResponse('Rate limit exceeded. Videos: 10/min', 429, edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 10));
+    }
+
+    // Check circuit breaker
+    if (circuitBreaker.isOpen(provider)) {
+      structuredLog.warn('video', 'circuit_open', { provider, requestId });
+      return errorResponse(`${provider} temporarily unavailable. Try again later.`, 503);
     }
 
     const apiKeys: Record<string, string> = {
@@ -86,133 +100,145 @@ export default async function handler(req: Request): Promise<Response> {
 
     const apiKey = apiKeys[provider];
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: `${provider} API key not configured` }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return errorResponse(`${provider} API key not configured`, 500);
     }
 
     let videoUrl = '';
-    const startTime = Date.now();
 
-    switch (provider) {
-      case 'freepik': {
-        const endpoint = FREEPIK_VIDEO_ENDPOINTS[model];
-        if (!endpoint) {
-          return new Response(JSON.stringify({ error: 'Invalid video model' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
+    structuredLog.info('video', 'request_start', { provider, model, requestId });
 
-        // Prepare image data
-        const imageData = image.startsWith('data:')
-          ? image.split(',')[1]
-          : image;
+    try {
+      switch (provider) {
+        case 'freepik': {
+          const endpoint = FREEPIK_VIDEO_ENDPOINTS[model];
+          if (!endpoint) {
+            return errorResponse('Invalid video model', 400);
+          }
 
-        const fpRes = await fetch(`https://api.freepik.com/v1${endpoint}`, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'x-freepik-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            image: imageData,
-            prompt,
-          }),
-        });
+          // Prepare image data
+          const imageData = image.startsWith('data:')
+            ? image.split(',')[1]
+            : image;
 
-        if (!fpRes.ok) {
-          const error = await fpRes.json().catch(() => ({}));
-          throw new Error(error.message || error.detail || `Freepik error ${fpRes.status}`);
-        }
-
-        const fpData = await fpRes.json();
-
-        // Poll for video completion
-        if (fpData.data?.id) {
-          let attempts = 0;
-          const maxAttempts = 120; // 4 minutos max polling
-
-          while (attempts < maxAttempts) {
-            await new Promise(r => setTimeout(r, 2000));
-
-            const statusRes = await fetch(`https://api.freepik.com/v1${endpoint}/${fpData.data.id}`, {
+          const fpRes = await fetchWithRetry(
+            `https://api.freepik.com/v1${endpoint}`,
+            {
+              method: 'POST',
               headers: {
                 'Accept': 'application/json',
+                'Content-Type': 'application/json',
                 'x-freepik-api-key': apiKey,
               },
-            });
+              body: JSON.stringify({
+                image: imageData,
+                prompt,
+              }),
+            },
+            { maxRetries: 2, baseDelayMs: 2000 }
+          );
 
-            const statusData = await statusRes.json();
-
-            if (statusData.data?.status === 'COMPLETED') {
-              videoUrl = statusData.data.video?.url || statusData.data.generated?.[0]?.url || '';
-              break;
-            }
-
-            if (statusData.data?.status === 'FAILED') {
-              throw new Error('Video generation failed');
-            }
-
-            attempts++;
+          if (!fpRes.ok) {
+            const error = await fpRes.json().catch(() => ({}));
+            throw new Error(error.message || error.detail || `Freepik error ${fpRes.status}`);
           }
 
-          if (attempts >= maxAttempts) {
-            throw new Error('Video generation timeout');
+          const fpData = await fpRes.json();
+
+          // Poll for video completion
+          if (fpData.data?.id) {
+            let attempts = 0;
+            const maxAttempts = 120; // 4 minutos max polling
+
+            structuredLog.info('video', 'polling_start', { taskId: fpData.data.id, requestId });
+
+            while (attempts < maxAttempts) {
+              await new Promise(r => setTimeout(r, 2000));
+
+              const statusRes = await fetch(`https://api.freepik.com/v1${endpoint}/${fpData.data.id}`, {
+                headers: {
+                  'Accept': 'application/json',
+                  'x-freepik-api-key': apiKey,
+                },
+              });
+
+              const statusData = await statusRes.json();
+
+              if (statusData.data?.status === 'COMPLETED') {
+                videoUrl = statusData.data.video?.url || statusData.data.generated?.[0]?.url || '';
+                structuredLog.info('video', 'polling_complete', { taskId: fpData.data.id, attempts, requestId });
+                break;
+              }
+
+              if (statusData.data?.status === 'FAILED') {
+                throw new Error('Video generation failed');
+              }
+
+              attempts++;
+            }
+
+            if (attempts >= maxAttempts) {
+              throw new Error('Video generation timeout');
+            }
+          } else if (fpData.data?.video?.url) {
+            videoUrl = fpData.data.video.url;
           }
-        } else if (fpData.data?.video?.url) {
-          videoUrl = fpData.data.video.url;
+          break;
         }
-        break;
+
+        case 'falai': {
+          const falEndpoint = model.startsWith('fal-ai/') ? model : `fal-ai/${model}`;
+
+          let requestBody: Record<string, any>;
+
+          if (model.includes('kling')) {
+            requestBody = {
+              image_url: image,
+              prompt,
+              duration,
+              aspect_ratio: '16:9',
+            };
+          } else {
+            requestBody = {
+              image_url: image,
+              motion_bucket_id: 127,
+              fps: 7,
+              cond_aug: 0.02,
+            };
+          }
+
+          const falRes = await fetchWithRetry(
+            `https://fal.run/${falEndpoint}`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Key ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+            },
+            { maxRetries: 2, baseDelayMs: 2000, maxDelayMs: 30000 }
+          );
+
+          if (!falRes.ok) {
+            const error = await falRes.json().catch(() => ({}));
+            throw new Error(error.detail || error.message || `FAL.ai error ${falRes.status}`);
+          }
+
+          const falData = await falRes.json();
+          videoUrl = falData.video?.url || falData.video_url || falData.output?.video || '';
+          break;
+        }
+
+        default:
+          return errorResponse('Invalid provider', 400);
       }
 
-      case 'falai': {
-        const falEndpoint = model.startsWith('fal-ai/') ? model : `fal-ai/${model}`;
+      // Record success
+      circuitBreaker.recordSuccess(provider);
 
-        let requestBody: Record<string, any>;
-
-        if (model.includes('kling')) {
-          requestBody = {
-            image_url: image,
-            prompt,
-            duration,
-            aspect_ratio: '16:9',
-          };
-        } else {
-          requestBody = {
-            image_url: image,
-            motion_bucket_id: 127,
-            fps: 7,
-            cond_aug: 0.02,
-          };
-        }
-
-        const falRes = await fetch(`https://fal.run/${falEndpoint}`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Key ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!falRes.ok) {
-          const error = await falRes.json().catch(() => ({}));
-          throw new Error(error.detail || error.message || `FAL.ai error ${falRes.status}`);
-        }
-
-        const falData = await falRes.json();
-        videoUrl = falData.video?.url || falData.video_url || falData.output?.video || '';
-        break;
-      }
-
-      default:
-        return new Response(JSON.stringify({ error: 'Invalid provider' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+    } catch (providerError: any) {
+      circuitBreaker.recordFailure(provider);
+      throw providerError;
     }
 
     if (!videoUrl) {
@@ -221,39 +247,38 @@ export default async function handler(req: Request): Promise<Response> {
 
     const responseTime = Date.now() - startTime;
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: {
-          videoUrl,
-          provider,
-          model,
-          responseTimeMs: responseTime,
-        },
-      }),
+    structuredLog.request('video', 'request_complete', startTime, true, {
+      provider,
+      model,
+      requestId,
+    });
+
+    return successResponse(
       {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'public, max-age=86400', // Cache 24h
-        },
+        videoUrl,
+        provider,
+        model,
+        responseTimeMs: responseTime,
+      },
+      {
+        ...edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 10),
+        ...securityHeaders,
+        'X-Request-ID': requestId,
+        'Cache-Control': 'public, max-age=86400',
       }
     );
+
   } catch (error: any) {
-    console.error('Video API error:', error);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message || 'Internal server error',
-      }),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      }
-    );
+    const responseTime = Date.now() - startTime;
+
+    structuredLog.error('video', 'request_failed', error, {
+      requestId,
+      duration: responseTime,
+    });
+
+    return errorResponse(error.message || 'Internal server error', 500, {
+      ...securityHeaders,
+      'X-Request-ID': requestId,
+    });
   }
 }
