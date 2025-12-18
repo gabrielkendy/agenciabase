@@ -103,8 +103,10 @@ export interface VideoJobData {
 
 export interface WebhookJobData {
   webhookId: string;
-  event: string;
+  url: string;
+  secret: string;
   payload: Record<string, unknown>;
+  attempt?: number;
   retryCount?: number;
 }
 

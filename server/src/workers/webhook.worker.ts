@@ -126,7 +126,7 @@ export async function queueWebhook(
     // Get all active webhooks for this org that subscribe to this event
     const { data: webhooks, error } = await supabase
       .from('webhooks')
-      .select('id')
+      .select('id, url, secret')
       .eq('organization_id', organizationId)
       .eq('is_active', true)
       .contains('events', [event]);
@@ -142,8 +142,10 @@ export async function queueWebhook(
     for (const webhook of webhooks) {
       await queueService.addWebhookJob({
         webhookId: webhook.id,
-        event,
-        payload,
+        url: webhook.url,
+        secret: webhook.secret || '',
+        payload: { event, data: payload, timestamp: new Date().toISOString() },
+        attempt: 1,
         retryCount: 0,
       });
     }
