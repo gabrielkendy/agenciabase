@@ -52,6 +52,7 @@ export const WorkflowPage = () => {
   });
 
   const resetForm = () => {
+    console.log('[Workflow] resetForm chamado');
     setForm({ title: '', briefing: '', caption: '', hashtags: '', client_id: '', content_type: 'post', channels: [], tags: '', scheduled_date: '', scheduled_time: '', auto_schedule: false, media: [] });
     setTeamForm({ team_redator_id: '', team_designer_id: '', skip_internal_approval: false, internal_approvers: [], skip_external_approval: false, external_approvers: [] });
     setEditingDemand(null);
@@ -108,10 +109,12 @@ export const WorkflowPage = () => {
   };
 
   const handleNextStep = () => {
-    if (!form.title || !form.client_id) { 
-      toast.error('Preencha título e cliente'); 
-      return; 
+    console.log('[Workflow] handleNextStep chamado', { title: form.title, client_id: form.client_id, modalStep });
+    if (!form.title || !form.client_id) {
+      toast.error('Preencha título e cliente');
+      return;
     }
+    console.log('[Workflow] Avançando para team...');
     setModalStep('team');
   };
 
@@ -254,9 +257,10 @@ export const WorkflowPage = () => {
 
   // Handle file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[Workflow] handleFileUpload chamado');
     const files = e.target.files;
     if (!files) return;
-    
+
     Array.from(files).forEach((file) => {
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -267,10 +271,14 @@ export const WorkflowPage = () => {
           type: file.type.startsWith('video') ? 'video' : file.type.startsWith('image') ? 'image' : 'document',
           name: file.name,
         };
+        console.log('[Workflow] Adicionando mídia:', file.name);
         setForm((prev) => ({ ...prev, media: [...prev.media, newMedia] }));
       };
       reader.readAsDataURL(file);
     });
+
+    // Limpar o input para permitir re-upload do mesmo arquivo
+    e.target.value = '';
   };
 
   // Remove media
