@@ -217,7 +217,7 @@ export interface ChatMessage {
   created_at: string;
 }
 
-// ========== CHAT PROJECT ==========
+// ========== CHAT PROJECT (Sistema igual Claude) ==========
 export interface ChatProject {
   id: string;
   user_id: string;
@@ -225,6 +225,37 @@ export interface ChatProject {
   description?: string;
   color: string;
   icon: string;
+  instructions?: string; // Instrucoes customizadas para o projeto
+  created_at: string;
+  updated_at?: string;
+}
+
+// Conhecimento do Projeto (PDFs, Links, Textos, Videos)
+export interface ProjectKnowledge {
+  id: string;
+  project_id: string;
+  type: 'pdf' | 'url' | 'text' | 'video' | 'file';
+  title: string;
+  content: string; // Conteudo extraido
+  source_url?: string;
+  file_name?: string;
+  file_size?: number;
+  mime_type?: string;
+  status: 'pending' | 'processing' | 'ready' | 'error';
+  error_message?: string;
+  created_at: string;
+}
+
+// Anexo de conversa
+export interface ConversationAttachment {
+  id: string;
+  conversation_id: string;
+  message_id?: string;
+  type: 'image' | 'video' | 'file' | 'audio';
+  name: string;
+  url: string;
+  size: number;
+  mime_type: string;
   created_at: string;
 }
 

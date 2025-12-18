@@ -4,6 +4,7 @@ import { useStore } from '../store';
 import type { Agent, AIProvider, AIModel } from '../types';
 import { AI_MODELS } from '../types';
 import { knowledgeService, KnowledgeItem, TrainingStatus } from '../services/knowledgeService';
+import { openaiAssistantsService, OpenAIAssistant } from '../services/openaiAssistantsService';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 
@@ -39,6 +40,12 @@ export const AgentsPage: React.FC = () => {
     provider: 'gemini' as AIProvider,
     model: 'gemini-2.0-flash-exp' as AIModel,
   });
+
+  // OpenAI Assistant Import
+  const [showImportAssistant, setShowImportAssistant] = useState(false);
+  const [assistantIdInput, setAssistantIdInput] = useState('');
+  const [importingAssistant, setImportingAssistant] = useState(false);
+  const [importedAssistant, setImportedAssistant] = useState<OpenAIAssistant | null>(null);
 
   // Carregar conhecimentos quando seleciona agente
   useEffect(() => {
@@ -98,6 +105,60 @@ export const AgentsPage: React.FC = () => {
     toast.success('Agente criado!');
     setShowNewAgentModal(false);
     setNewAgentForm({ name: '', role: '', description: '', avatar: '🤖', provider: 'gemini', model: 'gemini-2.0-flash-exp' });
+  };
+
+  // IMPORTAR OPENAI ASSISTANT
+  const handleImportAssistant = async () => {
+    if (!assistantIdInput.trim()) {
+      toast.error('Digite o ID do Assistant');
+      return;
+    }
+    if (!apiConfig.openai_key) {
+      toast.error('Configure a API Key da OpenAI em Configurações');
+      return;
+    }
+
+    setImportingAssistant(true);
+    try {
+      openaiAssistantsService.setApiKey(apiConfig.openai_key);
+      const result = await openaiAssistantsService.validateAssistantId(assistantIdInput.trim());
+
+      if (!result.valid || !result.assistant) {
+        toast.error(`Assistant não encontrado: ${result.error}`);
+        setImportingAssistant(false);
+        return;
+      }
+
+      setImportedAssistant(result.assistant);
+      toast.success(`Assistant "${result.assistant.name}" encontrado!`);
+    } catch (error: any) {
+      toast.error(`Erro: ${error.message}`);
+    }
+    setImportingAssistant(false);
+  };
+
+  const handleConfirmImportAssistant = () => {
+    if (!importedAssistant) return;
+
+    addAgent({
+      name: importedAssistant.name || 'Assistant OpenAI',
+      role: 'OpenAI Assistant',
+      description: importedAssistant.description || `Assistant ID: ${importedAssistant.id}`,
+      avatar: '🤖',
+      provider: 'openai',
+      model: importedAssistant.model as AIModel || 'gpt-4o',
+      system_prompt: importedAssistant.instructions || '',
+      temperature: 0.7,
+      is_active: true,
+      trained_knowledge: '',
+      openai_assistant_id: importedAssistant.id,
+      user_id: currentUser?.id || '',
+    });
+
+    toast.success(`Assistant "${importedAssistant.name}" importado!`);
+    setShowImportAssistant(false);
+    setAssistantIdInput('');
+    setImportedAssistant(null);
   };
 
   const handleDeleteAgent = () => {
@@ -207,9 +268,14 @@ export const AgentsPage: React.FC = () => {
               <p className="text-xs text-gray-500 mt-1">{agents.length} agentes</p>
             </div>
             {isAdmin && (
-              <button onClick={() => setShowNewAgentModal(true)} className="p-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg">
-                <Icons.Plus size={18} />
-              </button>
+              <div className="flex gap-1">
+                <button onClick={() => setShowImportAssistant(true)} className="p-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg" title="Importar OpenAI Assistant">
+                  <Icons.Download size={18} />
+                </button>
+                <button onClick={() => setShowNewAgentModal(true)} className="p-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg" title="Criar Agente">
+                  <Icons.Plus size={18} />
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -401,6 +467,123 @@ export const AgentsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal: Importar OpenAI Assistant */}
+      {showImportAssistant && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg">
+            <div className="p-6 border-b border-gray-800">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <span className="text-2xl">🤖</span>
+                Importar OpenAI Assistant
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Importe um Assistant já criado na OpenAI
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              {!importedAssistant ? (
+                <>
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">ID do Assistant</label>
+                    <input
+                      type="text"
+                      value={assistantIdInput}
+                      onChange={(e) => setAssistantIdInput(e.target.value)}
+                      placeholder="asst_xxxxxxxxxxxxxxxx"
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white font-mono text-sm focus:border-green-500 focus:outline-none"
+                    />
+                    <p className="text-xs text-gray-600 mt-2">
+                      Encontre o ID no painel da OpenAI: platform.openai.com/assistants
+                    </p>
+                  </div>
+
+                  {!apiConfig.openai_key && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                      <p className="text-red-400 text-sm">
+                        ⚠️ Configure a API Key da OpenAI em Configurações primeiro
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-xl">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center text-2xl">
+                        🤖
+                      </div>
+                      <div>
+                        <p className="text-white font-bold">{importedAssistant.name || 'Sem nome'}</p>
+                        <p className="text-xs text-gray-400 font-mono">{importedAssistant.id}</p>
+                      </div>
+                    </div>
+                    {importedAssistant.description && (
+                      <p className="text-sm text-gray-300">{importedAssistant.description}</p>
+                    )}
+                    <div className="flex gap-2 mt-3">
+                      <span className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-400">
+                        {importedAssistant.model}
+                      </span>
+                      {importedAssistant.tools.map((tool, i) => (
+                        <span key={i} className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">
+                          {tool.type}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {importedAssistant.instructions && (
+                    <div>
+                      <label className="text-sm text-gray-400 mb-1 block">Instruções</label>
+                      <div className="bg-gray-800 rounded-lg p-3 max-h-32 overflow-y-auto">
+                        <p className="text-xs text-gray-300 whitespace-pre-wrap">
+                          {importedAssistant.instructions.substring(0, 500)}
+                          {importedAssistant.instructions.length > 500 && '...'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-gray-800 flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowImportAssistant(false);
+                  setAssistantIdInput('');
+                  setImportedAssistant(null);
+                }}
+                className="px-4 py-2 text-gray-400 hover:text-white"
+              >
+                Cancelar
+              </button>
+              {!importedAssistant ? (
+                <button
+                  onClick={handleImportAssistant}
+                  disabled={importingAssistant || !assistantIdInput.trim()}
+                  className="px-6 py-2 bg-green-500 hover:bg-green-400 disabled:opacity-50 text-white rounded-lg font-medium flex items-center gap-2"
+                >
+                  {importingAssistant ? (
+                    <Icons.Loader size={18} className="animate-spin" />
+                  ) : (
+                    <Icons.Search size={18} />
+                  )}
+                  Buscar Assistant
+                </button>
+              ) : (
+                <button
+                  onClick={handleConfirmImportAssistant}
+                  className="px-6 py-2 bg-green-500 hover:bg-green-400 text-white rounded-lg font-medium flex items-center gap-2"
+                >
+                  <Icons.Check size={18} />
+                  Importar
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -451,9 +634,12 @@ const ConfigTab: React.FC<ConfigTabProps> = ({ editForm, setEditForm, handleSave
       </div>
       
       <div>
-        <label className="text-sm text-gray-400 mb-1 block">System Prompt</label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-sm text-gray-400">System Prompt</label>
+          <span className="text-xs text-gray-600">{(editForm.system_prompt || '').length.toLocaleString()} caracteres</span>
+        </div>
         <textarea value={editForm.system_prompt || ''} onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })}
-          rows={8} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none resize-y font-mono text-sm max-h-[400px] overflow-y-auto"
+          rows={5} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none resize-y font-mono text-xs max-h-[180px] overflow-y-auto leading-relaxed"
           placeholder="Defina a personalidade e instruções do agente..." />
         <p className="text-xs text-gray-500 mt-1">💡 O conhecimento treinado será adicionado automaticamente ao final.</p>
       </div>
