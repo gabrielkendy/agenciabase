@@ -8,15 +8,7 @@
   "functions": {
     "api/**/*.ts": {
       "memory": 1024,
-      "maxDuration": 30
-    },
-    "api/ai/video.ts": {
-      "memory": 1024,
-      "maxDuration": 300
-    },
-    "api/ai/tools.ts": {
-      "memory": 1024,
-      "maxDuration": 120
+      "maxDuration": 60
     }
   },
   "headers": [
