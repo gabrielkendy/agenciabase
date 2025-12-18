@@ -72,27 +72,60 @@ class FreepikService {
     this.apiKey = key;
   }
 
+  getApiKey(): string {
+    return this.apiKey;
+  }
+
+  isConfigured(): boolean {
+    return !!this.apiKey && this.apiKey.length > 10;
+  }
+
   private async request<T>(endpoint: string, method: 'GET' | 'POST', body?: any): Promise<T> {
     if (!this.apiKey) {
-      throw new Error('Freepik API key não configurada');
+      throw new Error('Freepik API key não configurada. Vá em Configurações > Integrações e adicione sua chave.');
     }
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method,
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'x-freepik-api-key': this.apiKey,
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    try {
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        method,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'x-freepik-api-key': this.apiKey,
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
-      throw new Error(error.message || `Freepik API error: ${response.status}`);
+      if (!response.ok) {
+        let errorMessage = `Freepik API error: ${response.status}`;
+        try {
+          const error = await response.json();
+          errorMessage = error.message || error.detail || error.error?.message || errorMessage;
+
+          // Erros comuns
+          if (response.status === 401) {
+            errorMessage = 'API Key inválida. Verifique sua chave do Freepik nas configurações.';
+          } else if (response.status === 403) {
+            errorMessage = 'Acesso negado. Verifique se sua API Key tem permissão para este recurso.';
+          } else if (response.status === 429) {
+            errorMessage = 'Limite de requisições excedido. Aguarde alguns minutos.';
+          } else if (response.status === 400) {
+            errorMessage = `Parâmetros inválidos: ${errorMessage}`;
+          }
+        } catch {
+          // Ignora erro de parse
+        }
+        throw new Error(errorMessage);
+      }
+
+      return response.json();
+    } catch (error: any) {
+      // Erro de rede (Failed to fetch)
+      if (error.message === 'Failed to fetch') {
+        throw new Error('Erro de conexão com Freepik. Verifique sua internet ou se a API está disponível.');
+      }
+      throw error;
     }
-
-    return response.json();
   }
 
   // Generate image using Mystic model

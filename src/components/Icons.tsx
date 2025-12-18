@@ -153,6 +153,7 @@ import {
   Triangle,
   RectangleHorizontal,
   TextCursor,
+  Brain,
 } from 'lucide-react';
 
 export const Icons = {
@@ -353,4 +354,6 @@ export const Icons = {
   Triangle,
   Rectangle: RectangleHorizontal,
   TextCursor,
+  Brain,
+  Memory: Brain,
 };

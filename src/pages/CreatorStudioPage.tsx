@@ -240,20 +240,33 @@ export const CreatorStudioPage = () => {
     }
 
     const model = IMAGE_MODELS.find(m => m.id === imageModel);
-    if (!model) return;
+    if (!model) {
+      toast.error('Selecione um modelo');
+      return;
+    }
 
-    // Check API keys
-    if (model.provider === 'freepik' && !apiConfig.freepik_key) {
-      toast.error('Configure a API Key do Freepik em Integracoes');
-      return;
+    // Check API keys with detailed messages
+    if (model.provider === 'freepik') {
+      if (!apiConfig.freepik_key) {
+        toast.error('Configure a API Key do Freepik em Configurações > Integrações');
+        return;
+      }
+      if (apiConfig.freepik_key.length < 10) {
+        toast.error('API Key do Freepik parece inválida');
+        return;
+      }
     }
-    if (model.provider === 'falai' && !apiConfig.falai_key) {
-      toast.error('Configure a API Key do FAL.ai em Integracoes');
-      return;
+    if (model.provider === 'falai') {
+      if (!apiConfig.falai_key) {
+        toast.error('Configure a API Key do FAL.ai em Configurações > Integrações');
+        return;
+      }
     }
-    if (model.provider === 'openai' && !apiConfig.openai_key) {
-      toast.error('Configure a API Key da OpenAI em Integracoes');
-      return;
+    if (model.provider === 'openai') {
+      if (!apiConfig.openai_key) {
+        toast.error('Configure a API Key da OpenAI em Configurações > Integrações');
+        return;
+      }
     }
 
     setIsGeneratingImage(true);
@@ -415,8 +428,22 @@ export const CreatorStudioPage = () => {
         throw new Error('Nenhuma imagem retornada');
       }
     } catch (error: any) {
-      updateHistoryItem(itemId, { status: 'error', error: error.message });
-      toast.error(`Erro: ${error.message}`);
+      let errorMsg = error.message || 'Erro desconhecido';
+
+      // Melhorar mensagens de erro comuns
+      if (errorMsg === 'Failed to fetch' || errorMsg.includes('NetworkError')) {
+        errorMsg = 'Erro de conexão. Verifique sua internet e tente novamente.';
+      } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
+        errorMsg = 'API Key inválida. Verifique suas credenciais nas Configurações.';
+      } else if (errorMsg.includes('429') || errorMsg.includes('rate limit')) {
+        errorMsg = 'Limite de requisições excedido. Aguarde alguns minutos.';
+      } else if (errorMsg.includes('403')) {
+        errorMsg = 'Sem permissão para este recurso. Verifique sua API Key.';
+      }
+
+      updateHistoryItem(itemId, { status: 'error', error: errorMsg });
+      toast.error(errorMsg);
+      console.error('Image generation error:', error);
     } finally {
       setIsGeneratingImage(false);
       setImageProgress(0);
