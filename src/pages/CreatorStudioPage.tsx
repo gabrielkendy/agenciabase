@@ -10,42 +10,33 @@ type StudioTab = 'image' | 'video' | 'audio' | 'tools';
 type FilterType = 'all' | 'favorites' | 'recent';
 type ReferenceType = 'style' | 'character' | 'upload';
 
-// ========== IMAGE MODELS (Freepik API) ==========
-// Endpoints confirmados: https://docs.freepik.com/api-reference/
+// ========== IMAGE MODELS ==========
+// APIs que FUNCIONAM de verdade - sem problemas de CORS
 const IMAGE_MODELS = [
-  // Freepik Mystic (nativo, muito estável) - RECOMENDADO
-  { id: 'mystic', name: 'Mystic', provider: 'freepik', icon: '🎨', description: 'Fotorrealista com LoRAs', badge: 'SUGGESTED', badgeColor: 'gray', endpoint: '/ai/mystic' },
-  // Gemini (Google) - via Freepik
-  { id: 'gemini-flash', name: 'Gemini 2.5 Flash', provider: 'freepik', icon: '🍌', description: 'Google Nano Banana', badge: 'NEW', badgeColor: 'green', endpoint: '/ai/gemini-2-5-flash-image-preview' },
-  // Seedream (ByteDance)
-  { id: 'seedream-v4-edit', name: 'Seedream 4 Edit', provider: 'freepik', icon: '✏️', description: 'Edicao com prompts', badge: 'NEW', badgeColor: 'blue', endpoint: '/ai/text-to-image/seedream-v4-edit' },
-  { id: 'seedream-v4', name: 'Seedream 4', provider: 'freepik', icon: '🌟', description: '4K, multi-imagem', badge: 'TRENDING', badgeColor: 'green', endpoint: '/ai/text-to-image/seedream-v4' },
-  { id: 'seedream', name: 'Seedream', provider: 'freepik', icon: '🌱', description: 'Criatividade excepcional', badge: '', badgeColor: '', endpoint: '/ai/text-to-image/seedream' },
-  // Flux Models
-  { id: 'flux-pro-v1-1', name: 'Flux Pro 1.1', provider: 'freepik', icon: '⚡', description: 'Alta qualidade', badge: 'TRENDING', badgeColor: 'green', endpoint: '/ai/text-to-image/flux-pro-v1-1' },
-  { id: 'flux-dev', name: 'Flux Dev', provider: 'freepik', icon: '🔧', description: 'Desenvolvimento', badge: '', badgeColor: '', endpoint: '/ai/text-to-image/flux-dev' },
-  { id: 'hyperflux', name: 'HyperFlux', provider: 'freepik', icon: '💨', description: 'Ultra rapido', badge: '', badgeColor: '', endpoint: '/ai/text-to-image/hyperflux' },
-  // Classic Fast (endpoint padrão)
-  { id: 'classic', name: 'Classic Fast', provider: 'freepik', icon: '🖼️', description: 'Rapido e versatil', badge: '', badgeColor: '', endpoint: '/ai/text-to-image' },
-  // FAL.ai Models
-  { id: 'flux-schnell', name: 'Flux Schnell', provider: 'falai', icon: '⚡', description: 'FAL.ai - Ultra rapido', badge: '', badgeColor: '' },
-  // OpenAI
-  { id: 'dall-e-3', name: 'DALL·E 3', provider: 'openai', icon: '🤖', description: 'OpenAI - Muito preciso', badge: '', badgeColor: '' },
+  // ============ FAL.AI - FUNCIONA 100% ============
+  { id: 'flux-schnell', name: 'Flux Schnell', provider: 'falai', icon: '⚡', description: 'Ultra rapido, gratis', badge: 'RECOMENDADO', badgeColor: 'green', model: 'fal-ai/flux/schnell' },
+  { id: 'flux-dev', name: 'Flux Dev', provider: 'falai', icon: '🎨', description: 'Alta qualidade', badge: 'POPULAR', badgeColor: 'blue', model: 'fal-ai/flux/dev' },
+  { id: 'flux-pro', name: 'Flux Pro 1.1', provider: 'falai', icon: '✨', description: 'Qualidade maxima', badge: 'PRO', badgeColor: 'purple', model: 'fal-ai/flux-pro/v1.1' },
+  { id: 'flux-realism', name: 'Flux Realism', provider: 'falai', icon: '📷', description: 'Fotorrealismo', badge: 'NEW', badgeColor: 'green', model: 'fal-ai/flux-realism' },
+  { id: 'stable-diffusion-xl', name: 'SDXL', provider: 'falai', icon: '🖼️', description: 'Stable Diffusion XL', badge: '', badgeColor: '', model: 'fal-ai/fast-sdxl' },
+  { id: 'ideogram', name: 'Ideogram V2', provider: 'falai', icon: '🔤', description: 'Texto em imagens', badge: 'NEW', badgeColor: 'green', model: 'fal-ai/ideogram/v2' },
+  { id: 'recraft', name: 'Recraft V3', provider: 'falai', icon: '🎯', description: 'Design grafico', badge: '', badgeColor: '', model: 'fal-ai/recraft-v3' },
+  // ============ OPENAI - FUNCIONA ============
+  { id: 'dall-e-3', name: 'DALL-E 3', provider: 'openai', icon: '🤖', description: 'OpenAI - Muito preciso', badge: 'PREMIUM', badgeColor: 'blue' },
+  { id: 'dall-e-2', name: 'DALL-E 2', provider: 'openai', icon: '🎨', description: 'OpenAI - Rapido', badge: '', badgeColor: '' },
+  // ============ GOOGLE GEMINI - FUNCIONA ============
+  { id: 'imagen-3', name: 'Imagen 3 (Gemini)', provider: 'google', icon: '🍌', description: 'Google Nano Banana', badge: 'NEW', badgeColor: 'green' },
 ];
 
 // ========== VIDEO MODELS ==========
-// Freepik + FAL.ai endpoints confirmados
+// FAL.ai - Funciona 100%
 const VIDEO_MODELS = [
-  // Freepik Video (confirmados)
-  { id: 'kling-v2-5-pro', name: 'Kling 2.5 Pro', provider: 'freepik', description: 'Kling via Freepik (melhor)', speed: 'slow', quality: 'highest', icon: '🎥', endpoint: '/ai/image-to-video/kling-v2-5-pro' },
-  { id: 'kling-v2-1-pro', name: 'Kling 2.1 Pro', provider: 'freepik', description: 'Kling v2.1 Pro', speed: 'slow', quality: 'highest', icon: '🎬', endpoint: '/ai/image-to-video/kling-v2-1-pro' },
-  { id: 'seedance-pro', name: 'Seedance Pro', provider: 'freepik', description: 'ByteDance 1080p', speed: 'medium', quality: 'high', icon: '🌟', endpoint: '/ai/image-to-video/seedance-pro-1080p' },
-  { id: 'pixverse-v5', name: 'PixVerse V5', provider: 'freepik', description: 'Video extension', speed: 'fast', quality: 'high', icon: '🎞️', endpoint: '/ai/image-to-video/pixverse-v5' },
-  { id: 'pixverse-transition', name: 'PixVerse Transition', provider: 'freepik', description: 'Video transition', speed: 'fast', quality: 'high', icon: '🔄', endpoint: '/ai/image-to-video/pixverse-v5-transition' },
-  { id: 'minimax-hailuo', name: 'MiniMax Hailuo', provider: 'freepik', description: 'Alta fidelidade 1080p', speed: 'slow', quality: 'highest', icon: '✨', endpoint: '/ai/image-to-video/minimax-hailuo-02-1080p' },
-  // FAL.ai Video (alternativo)
-  { id: 'fal-ai/kling-video/v1.6/pro/image-to-video', name: 'Kling 1.6 (FAL)', provider: 'falai', description: 'FAL.ai Kling Pro', speed: 'slow', quality: 'highest', icon: '📽️' },
-  { id: 'fal-ai/fast-svd-lcm', name: 'Fast SVD (FAL)', provider: 'falai', description: 'Video rapido', speed: 'fast', quality: 'good', icon: '⚡' },
+  { id: 'kling-pro', name: 'Kling Pro', provider: 'falai', description: 'Melhor qualidade', speed: 'slow', quality: 'highest', icon: '🎥', model: 'fal-ai/kling-video/v1.6/pro/image-to-video' },
+  { id: 'kling-standard', name: 'Kling Standard', provider: 'falai', description: 'Equilibrio', speed: 'medium', quality: 'high', icon: '🎬', model: 'fal-ai/kling-video/v1.6/standard/image-to-video' },
+  { id: 'minimax', name: 'MiniMax Hailuo', provider: 'falai', description: 'Alta fidelidade', speed: 'slow', quality: 'highest', icon: '✨', model: 'fal-ai/minimax/video-01/image-to-video' },
+  { id: 'luma-ray2', name: 'Luma Ray 2', provider: 'falai', description: 'Luma Dream Machine', speed: 'medium', quality: 'high', icon: '🌟', model: 'fal-ai/luma-dream-machine/ray-2' },
+  { id: 'fast-svd', name: 'Fast SVD', provider: 'falai', description: 'Ultra rapido', speed: 'fast', quality: 'good', icon: '⚡', model: 'fal-ai/fast-svd-lcm' },
+  { id: 'stable-video', name: 'Stable Video', provider: 'falai', description: 'Video difusao', speed: 'medium', quality: 'good', icon: '🎞️', model: 'fal-ai/stable-video' },
 ];
 
 // ========== AI TOOLS ==========
@@ -124,7 +115,7 @@ export const CreatorStudioPage = () => {
 
   // Image state
   const [imagePrompt, setImagePrompt] = useState('');
-  const [imageModel, setImageModel] = useState('auto');
+  const [imageModel, setImageModel] = useState('flux-schnell'); // FAL.ai Flux Schnell - funciona 100%
   const [imageSize, setImageSize] = useState('1:1');
   const [imageQuality, setImageQuality] = useState('2k');
   const [numImages, setNumImages] = useState(1);
@@ -215,56 +206,19 @@ export const CreatorStudioPage = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Map size to API format
-  const mapSizeToApi = (size: string): string => {
-    const map: Record<string, string> = {
-      '1:1': 'square_1_1',
-      '16:9': 'widescreen_16_9',
-      '9:16': 'portrait_9_16',
-      '4:3': 'classic_4_3',
-      '3:4': 'traditional_3_4',
-    };
-    return map[size] || 'square_1_1';
-  };
-
-  // Get model endpoint from model object
-  const getModelEndpoint = (model: typeof IMAGE_MODELS[0]): string => {
-    return (model as any).endpoint || '/ai/mystic';
-  };
-
-  // Generate Image
+  // Generate Image - Via Edge Function (seguro, escalável)
   const generateImage = async () => {
     if (!imagePrompt.trim()) {
       toast.error('Digite um prompt para gerar');
       return;
     }
 
-    const model = IMAGE_MODELS.find(m => m.id === imageModel);
+    // Find model or fallback to flux-schnell
+    let model = IMAGE_MODELS.find(m => m.id === imageModel);
     if (!model) {
-      toast.error('Selecione um modelo');
-      return;
-    }
-
-    // Check API keys with detailed messages
-    if (model.provider === 'freepik') {
-      if (!apiConfig.freepik_key) {
-        toast.error('Configure a API Key do Freepik em Configurações > Integrações');
-        return;
-      }
-      if (apiConfig.freepik_key.length < 10) {
-        toast.error('API Key do Freepik parece inválida');
-        return;
-      }
-    }
-    if (model.provider === 'falai') {
-      if (!apiConfig.falai_key) {
-        toast.error('Configure a API Key do FAL.ai em Configurações > Integrações');
-        return;
-      }
-    }
-    if (model.provider === 'openai') {
-      if (!apiConfig.openai_key) {
-        toast.error('Configure a API Key da OpenAI em Configurações > Integrações');
+      model = IMAGE_MODELS.find(m => m.id === 'flux-schnell');
+      if (!model) {
+        toast.error('Modelo não encontrado');
         return;
       }
     }
@@ -285,127 +239,34 @@ export const CreatorStudioPage = () => {
     });
 
     try {
-      let urls: string[] = [];
+      console.log(`[Edge Function] Gerando imagem via /api/ai/image`);
+      console.log(`[Edge Function] Provider: ${model.provider}, Model: ${model.id}`);
 
-      if (model.provider === 'freepik') {
-        freepikService.setApiKey(apiConfig.freepik_key!);
-
-        // Get endpoint from model
-        const endpoint = getModelEndpoint(model);
-        const isMystic = endpoint === '/ai/mystic';
-
-        // Build request body based on endpoint type
-        const requestBody: any = {
+      // Chamar Edge Function - API keys ficam seguras no servidor
+      const response = await fetch('/api/ai/image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          provider: model.provider,
+          model: model.id,
           prompt: imagePrompt,
-          num_images: numImages,
-        };
+          numImages: numImages,
+          size: imageSize,
+          quality: imageQuality,
+        }),
+      });
 
-        if (isMystic) {
-          // Mystic uses different parameter format
-          requestBody.image = { size: mapSizeToApi(imageSize) };
-          if (imageQuality !== '1k') {
-            requestBody.resolution = imageQuality;
-          }
-        } else {
-          // Other endpoints use standard format
-          // Map size to API format
-          const sizeMap: Record<string, string> = {
-            '1:1': 'square_1_1',
-            '16:9': 'widescreen_16_9',
-            '9:16': 'portrait_9_16',
-            '4:3': 'landscape_4_3',
-            '3:4': 'portrait_3_4',
-          };
-          requestBody.image = { size: sizeMap[imageSize] || 'square_1_1' };
-        }
+      const result = await response.json();
 
-        // Make API request
-        const response = await fetch(`https://api.freepik.com/v1${endpoint}`, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'x-freepik-api-key': apiConfig.freepik_key!,
-          },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({}));
-          console.error('Freepik API error:', err);
-          throw new Error(err.message || err.detail || err.error?.message || `Erro ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log('Freepik response:', data);
-
-        // Handle different response formats
-        if (data.data?.id && data.data?.status !== 'COMPLETED') {
-          // Async generation - poll for results
-          freepikService.setApiKey(apiConfig.freepik_key!);
-          const result = await freepikService.waitForGeneration(data.data.id);
-          urls = result.data.generated?.map(g => g.url) || [];
-        } else if (data.data?.generated) {
-          // Direct response with generated images
-          urls = data.data.generated.map((g: any) => g.url);
-        } else if (data.data?.[0]?.base64) {
-          // Base64 encoded images (Classic endpoint)
-          urls = data.data.map((img: any) => `data:image/png;base64,${img.base64}`);
-        } else if (data.images) {
-          // Alternative format
-          urls = data.images.map((img: any) => img.url || `data:image/png;base64,${img.base64}`);
-        }
-      } else if (model.provider === 'falai') {
-        // FAL.ai Flux Schnell
-        const sizeMap: Record<string, string> = {
-          '1:1': 'square',
-          '16:9': 'landscape_16_9',
-          '9:16': 'portrait_9_16',
-          '4:3': 'landscape_4_3',
-          '3:4': 'portrait_4_3',
-        };
-
-        const response = await fetch('https://fal.run/fal-ai/flux/schnell', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Key ${apiConfig.falai_key}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            prompt: imagePrompt,
-            num_images: numImages,
-            image_size: sizeMap[imageSize] || 'square',
-            num_inference_steps: 4,
-            enable_safety_checker: true,
-          }),
-        });
-
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({}));
-          throw new Error(err.detail || err.message || 'Erro FAL.ai');
-        }
-        const data = await response.json();
-        urls = data.images?.map((img: any) => img.url) || [];
-      } else if (model.provider === 'openai') {
-        const response = await fetch('https://api.openai.com/v1/images/generations', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiConfig.openai_key}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'dall-e-3',
-            prompt: imagePrompt,
-            n: 1,
-            size: '1024x1024',
-            quality: 'standard',
-          }),
-        });
-
-        if (!response.ok) throw new Error('Erro DALL-E 3');
-        const data = await response.json();
-        urls = data.data?.map((img: any) => img.url) || [];
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Erro ao gerar imagem');
       }
+
+      const urls: string[] = result.data?.images || [];
+
+      console.log(`[Edge Function] Response:`, result);
 
       setImageProgress(100);
 
@@ -428,19 +289,7 @@ export const CreatorStudioPage = () => {
         throw new Error('Nenhuma imagem retornada');
       }
     } catch (error: any) {
-      let errorMsg = error.message || 'Erro desconhecido';
-
-      // Melhorar mensagens de erro comuns
-      if (errorMsg === 'Failed to fetch' || errorMsg.includes('NetworkError')) {
-        errorMsg = 'Erro de conexão. Verifique sua internet e tente novamente.';
-      } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
-        errorMsg = 'API Key inválida. Verifique suas credenciais nas Configurações.';
-      } else if (errorMsg.includes('429') || errorMsg.includes('rate limit')) {
-        errorMsg = 'Limite de requisições excedido. Aguarde alguns minutos.';
-      } else if (errorMsg.includes('403')) {
-        errorMsg = 'Sem permissão para este recurso. Verifique sua API Key.';
-      }
-
+      const errorMsg = error.message || 'Erro desconhecido';
       updateHistoryItem(itemId, { status: 'error', error: errorMsg });
       toast.error(errorMsg);
       console.error('Image generation error:', error);
@@ -450,7 +299,7 @@ export const CreatorStudioPage = () => {
     }
   };
 
-  // Generate Video
+  // Generate Video - Via Edge Function (seguro, escalável)
   const generateVideo = async () => {
     if (!videoSourceImage) {
       toast.error('Adicione uma imagem para gerar video');
@@ -459,16 +308,6 @@ export const CreatorStudioPage = () => {
 
     const model = VIDEO_MODELS.find(m => m.id === videoModel);
     if (!model) return;
-
-    // Check API keys based on provider
-    if (model.provider === 'freepik' && !apiConfig.freepik_key) {
-      toast.error('Configure a API Key do Freepik em Integracoes');
-      return;
-    }
-    if (model.provider === 'falai' && !apiConfig.falai_key) {
-      toast.error('Configure a API Key do FAL.ai em Integracoes');
-      return;
-    }
 
     setIsGeneratingVideo(true);
     setVideoProgress(0);
@@ -487,101 +326,33 @@ export const CreatorStudioPage = () => {
     });
 
     try {
-      let videoUrl = '';
+      console.log(`[Edge Function] Gerando video via /api/ai/video`);
+      console.log(`[Edge Function] Model: ${model.id}`);
 
-      if (model.provider === 'freepik') {
-        // Freepik Video API
-        const endpoint = (model as any).endpoint;
-        const requestBody: any = {
-          image: videoSourceImage.startsWith('data:')
-            ? videoSourceImage.split(',')[1]
-            : videoSourceImage,
-          prompt: videoPrompt || 'Smooth natural motion',
-        };
+      // Chamar Edge Function - API keys ficam seguras no servidor
+      const response = await fetch('/api/ai/video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          provider: 'falai',
+          model: model.id,
+          image: videoSourceImage,
+          prompt: videoPrompt || 'Smooth natural motion, cinematic',
+          duration: videoDuration,
+        }),
+      });
 
-        const response = await fetch(`https://api.freepik.com/v1${endpoint}`, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'x-freepik-api-key': apiConfig.freepik_key!,
-          },
-          body: JSON.stringify(requestBody),
-        });
+      const result = await response.json();
 
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({}));
-          console.error('Freepik Video error:', error);
-          throw new Error(error.message || error.detail || `Erro ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log('Freepik Video response:', data);
-
-        // Poll for result if async
-        if (data.data?.id && data.data?.status !== 'COMPLETED') {
-          // Poll for video completion
-          let attempts = 0;
-          const maxAttempts = 60; // 2 minutes max
-          while (attempts < maxAttempts) {
-            await new Promise(r => setTimeout(r, 2000));
-            const statusRes = await fetch(`https://api.freepik.com/v1${endpoint}/${data.data.id}`, {
-              headers: { 'x-freepik-api-key': apiConfig.freepik_key! },
-            });
-            const statusData = await statusRes.json();
-
-            if (statusData.data?.status === 'COMPLETED') {
-              videoUrl = statusData.data.video?.url || statusData.data.generated?.[0]?.url;
-              break;
-            }
-            if (statusData.data?.status === 'FAILED') {
-              throw new Error('Geracao do video falhou');
-            }
-            attempts++;
-            setVideoProgress(Math.min(90, (attempts / maxAttempts) * 100));
-          }
-        } else if (data.data?.video?.url) {
-          videoUrl = data.data.video.url;
-        } else if (data.data?.generated?.[0]?.url) {
-          videoUrl = data.data.generated[0].url;
-        }
-      } else {
-        // FAL.ai Video API
-        let requestBody: Record<string, any> = {};
-
-        if (videoModel.includes('kling')) {
-          requestBody = {
-            image_url: videoSourceImage,
-            prompt: videoPrompt || 'Smooth natural motion',
-            duration: videoDuration,
-            aspect_ratio: '16:9',
-          };
-        } else {
-          requestBody = {
-            image_url: videoSourceImage,
-            motion_bucket_id: 127,
-            fps: 7,
-            cond_aug: 0.02,
-          };
-        }
-
-        const response = await fetch('https://fal.run/' + videoModel, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Key ${apiConfig.falai_key}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({}));
-          throw new Error(error.detail || error.message || 'Erro ao gerar video');
-        }
-
-        const data = await response.json();
-        videoUrl = data.video?.url || data.video_url || data.output?.video;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Erro ao gerar video');
       }
+
+      const videoUrl = result.data?.videoUrl;
+
+      console.log(`[Edge Function] Response:`, result);
 
       setVideoProgress(100);
 
@@ -830,36 +601,50 @@ export const CreatorStudioPage = () => {
             {/* Model Dropdown Menu */}
             {showModelSelector && (
               <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl max-h-[400px] overflow-y-auto">
-                {IMAGE_MODELS.filter(m => m.provider === 'freepik' || (m.provider === 'falai' && apiConfig.falai_key) || (m.provider === 'openai' && apiConfig.openai_key)).map((model) => (
-                  <button
-                    key={model.id}
-                    onClick={() => { setImageModel(model.id); setShowModelSelector(false); }}
-                    className={clsx(
-                      'w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-left',
-                      imageModel === model.id && 'bg-gray-800'
-                    )}
-                  >
-                    <span className="text-xl">{model.icon}</span>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-white font-medium text-sm">{model.name}</p>
-                        {model.badge && (
-                          <span className={clsx(
-                            'text-[10px] px-1.5 py-0.5 rounded font-medium',
-                            model.badgeColor === 'green' ? 'bg-green-500/20 text-green-400' :
-                            model.badgeColor === 'blue' ? 'bg-blue-500/20 text-blue-400' :
-                            'bg-gray-500/20 text-gray-400'
-                          )}>
-                            {model.badge}
-                          </span>
-                        )}
-                        {(model as any).isLimited && <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400">LIMITED</span>}
+                {IMAGE_MODELS.map((model) => {
+                  // Check if API key is configured for this provider
+                  const hasApiKey =
+                    (model.provider === 'falai' && apiConfig.falai_key) ||
+                    (model.provider === 'openai' && apiConfig.openai_key) ||
+                    (model.provider === 'google' && apiConfig.gemini_key);
+
+                  return (
+                    <button
+                      key={model.id}
+                      onClick={() => { setImageModel(model.id); setShowModelSelector(false); }}
+                      className={clsx(
+                        'w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-left',
+                        imageModel === model.id && 'bg-gray-800',
+                        !hasApiKey && 'opacity-50'
+                      )}
+                    >
+                      <span className="text-xl">{model.icon}</span>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-white font-medium text-sm">{model.name}</p>
+                          {model.badge && (
+                            <span className={clsx(
+                              'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                              model.badgeColor === 'green' ? 'bg-green-500/20 text-green-400' :
+                              model.badgeColor === 'blue' ? 'bg-blue-500/20 text-blue-400' :
+                              model.badgeColor === 'purple' ? 'bg-purple-500/20 text-purple-400' :
+                              'bg-gray-500/20 text-gray-400'
+                            )}>
+                              {model.badge}
+                            </span>
+                          )}
+                          {!hasApiKey && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
+                              SEM API KEY
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">{model.description}</p>
                       </div>
-                      <p className="text-xs text-gray-500">{model.description}</p>
-                    </div>
-                    {imageModel === model.id && <Icons.Check size={16} className="text-green-400" />}
-                  </button>
-                ))}
+                      {imageModel === model.id && <Icons.Check size={16} className="text-green-400" />}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

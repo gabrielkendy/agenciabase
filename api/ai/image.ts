@@ -1,6 +1,6 @@
 // Edge Function: AI Image Generation
-// Suporta: Freepik (Mystic, Seedream, Flux, Gemini), FAL.ai, OpenAI DALL-E
-// Runtime: Edge com fallback para Serverless (para polling)
+// Suporta: FAL.ai (Flux, SDXL, Ideogram, Recraft), OpenAI (DALL-E), Google (Imagen 3)
+// Runtime: Edge com features de resiliência
 // Features: Retry, Circuit Breaker, Validation, Structured Logging
 
 import {
@@ -21,21 +21,19 @@ export const config = {
   regions: ['gru1', 'iad1', 'sfo1', 'fra1'],
 };
 
-// Freepik endpoints confirmados
-const FREEPIK_ENDPOINTS: Record<string, string> = {
-  'mystic': '/ai/mystic',
-  'gemini-flash': '/ai/gemini-2-5-flash-image-preview',
-  'seedream-v4-edit': '/ai/text-to-image/seedream-v4-edit',
-  'seedream-v4': '/ai/text-to-image/seedream-v4',
-  'seedream': '/ai/text-to-image/seedream',
-  'flux-pro-v1-1': '/ai/text-to-image/flux-pro-v1-1',
-  'flux-dev': '/ai/text-to-image/flux-dev',
-  'hyperflux': '/ai/text-to-image/hyperflux',
-  'classic': '/ai/text-to-image',
+// FAL.ai models mapping
+const FALAI_MODELS: Record<string, string> = {
+  'flux-schnell': 'fal-ai/flux/schnell',
+  'flux-dev': 'fal-ai/flux/dev',
+  'flux-pro': 'fal-ai/flux-pro/v1.1',
+  'flux-realism': 'fal-ai/flux-realism',
+  'sdxl': 'fal-ai/fast-sdxl',
+  'ideogram': 'fal-ai/ideogram/v2',
+  'recraft': 'fal-ai/recraft-v3',
 };
 
 interface ImageRequest {
-  provider: 'freepik' | 'falai' | 'openai';
+  provider: 'falai' | 'openai' | 'google';
   model: string;
   prompt: string;
   negativePrompt?: string;
@@ -50,7 +48,7 @@ function validateRequest(body: any): { valid: boolean; errors: string[] } {
 
   errors.push(...validate.required(body.provider, 'provider'));
   errors.push(...validate.required(body.prompt, 'prompt'));
-  errors.push(...validate.enum(body.provider, 'provider', ['freepik', 'falai', 'openai']));
+  errors.push(...validate.enum(body.provider, 'provider', ['falai', 'openai', 'google']));
   errors.push(...validate.string(body.prompt, 'prompt', { minLength: 1, maxLength: 10000 }));
 
   if (body.numImages !== undefined) {
@@ -74,7 +72,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   try {
     const body: ImageRequest = await req.json();
-    const { provider, model, prompt, negativePrompt, numImages = 1, size = '1:1', quality = '2k' } = body;
+    const { provider, model, prompt, negativePrompt, numImages = 1, size = '1:1' } = body;
 
     // Validate
     const validation = validateRequest(body);
@@ -89,24 +87,25 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (!rateLimit.allowed) {
       structuredLog.warn('image', 'rate_limit_exceeded', { ip, requestId });
-      return errorResponse('Rate limit exceeded', 429, edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 30));
+      return errorResponse('Rate limit exceeded. Aguarde 1 minuto.', 429, edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 30));
     }
 
     // Check circuit breaker
     if (circuitBreaker.isOpen(provider)) {
       structuredLog.warn('image', 'circuit_open', { provider, requestId });
-      return errorResponse(`${provider} temporarily unavailable. Try again later.`, 503);
+      return errorResponse(`${provider} temporariamente indisponível. Tente novamente em 1 minuto.`, 503);
     }
 
+    // Get API keys from environment
     const apiKeys: Record<string, string> = {
-      freepik: process.env.FREEPIK_API_KEY || '',
       falai: process.env.FALAI_API_KEY || '',
       openai: process.env.OPENAI_API_KEY || '',
+      google: process.env.GEMINI_API_KEY || '',
     };
 
     const apiKey = apiKeys[provider];
     if (!apiKey) {
-      return errorResponse(`${provider} API key not configured`, 500);
+      return errorResponse(`${provider} API key não configurada no servidor`, 500);
     }
 
     let images: string[] = [];
@@ -114,160 +113,152 @@ export default async function handler(req: Request): Promise<Response> {
     structuredLog.info('image', 'request_start', { provider, model, promptLength: prompt.length, requestId });
 
     try {
-      switch (provider) {
-        case 'freepik': {
-          const endpoint = FREEPIK_ENDPOINTS[model] || '/ai/mystic';
-          const isMystic = endpoint === '/ai/mystic';
+      // ============ FAL.AI ============
+      if (provider === 'falai') {
+        const falModel = FALAI_MODELS[model] || FALAI_MODELS['flux-schnell'];
 
-          // Map size
-          const sizeMap: Record<string, string> = {
-            '1:1': 'square_1_1',
-            '16:9': 'widescreen_16_9',
-            '9:16': 'portrait_9_16',
-            '4:3': 'landscape_4_3',
-            '3:4': 'portrait_3_4',
-          };
+        // Map size to FAL.ai format
+        const sizeMap: Record<string, string> = {
+          '1:1': 'square',
+          '16:9': 'landscape_16_9',
+          '9:16': 'portrait_9_16',
+          '4:3': 'landscape_4_3',
+          '3:4': 'portrait_4_3',
+        };
 
-          const requestBody: any = {
-            prompt,
-            num_images: numImages,
-            image: { size: sizeMap[size] || 'square_1_1' },
-          };
+        // Build request based on model
+        const requestBody: Record<string, any> = {
+          prompt,
+          num_images: numImages,
+          image_size: sizeMap[size] || 'square',
+          enable_safety_checker: true,
+        };
 
-          if (negativePrompt) requestBody.negative_prompt = negativePrompt;
-          if (isMystic && quality !== '1k') requestBody.resolution = quality;
-
-          const fpRes = await fetchWithRetry(
-            `https://api.freepik.com/v1${endpoint}`,
-            {
-              method: 'POST',
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'x-freepik-api-key': apiKey,
-              },
-              body: JSON.stringify(requestBody),
-            },
-            { maxRetries: 2, baseDelayMs: 1000 }
-          );
-
-          if (!fpRes.ok) {
-            const error = await fpRes.json().catch(() => ({}));
-            throw new Error(error.message || error.detail || `Freepik error ${fpRes.status}`);
-          }
-
-          const fpData = await fpRes.json();
-
-          // Handle async generation
-          if (fpData.data?.id && fpData.data?.status !== 'COMPLETED') {
-            let attempts = 0;
-            const maxAttempts = 30;
-
-            while (attempts < maxAttempts) {
-              await new Promise(r => setTimeout(r, 2000));
-
-              const statusRes = await fetch(`https://api.freepik.com/v1${endpoint}/${fpData.data.id}`, {
-                headers: {
-                  'Accept': 'application/json',
-                  'x-freepik-api-key': apiKey,
-                },
-              });
-
-              const statusData = await statusRes.json();
-
-              if (statusData.data?.status === 'COMPLETED') {
-                images = statusData.data.generated?.map((g: any) => g.url) || [];
-                break;
-              }
-
-              if (statusData.data?.status === 'FAILED') {
-                throw new Error('Image generation failed');
-              }
-
-              attempts++;
-            }
-
-            if (attempts >= maxAttempts) {
-              throw new Error('Generation timeout');
-            }
-          } else if (fpData.data?.generated) {
-            images = fpData.data.generated.map((g: any) => g.url);
-          } else if (fpData.data?.[0]?.base64) {
-            images = fpData.data.map((img: any) => `data:image/png;base64,${img.base64}`);
-          }
-          break;
+        // Model-specific settings
+        if (falModel.includes('schnell')) {
+          requestBody.num_inference_steps = 4;
+        } else if (falModel.includes('dev')) {
+          requestBody.num_inference_steps = 28;
+          requestBody.guidance_scale = 3.5;
+        } else if (falModel.includes('pro')) {
+          requestBody.num_inference_steps = 25;
+          requestBody.guidance_scale = 3.0;
+        } else if (falModel.includes('ideogram')) {
+          requestBody.style = 'auto';
+          requestBody.magic_prompt_option = 'auto';
+        } else if (falModel.includes('recraft')) {
+          requestBody.style = 'realistic_image';
         }
 
-        case 'falai': {
-          const falSizeMap: Record<string, string> = {
-            '1:1': 'square',
-            '16:9': 'landscape_16_9',
-            '9:16': 'portrait_9_16',
-            '4:3': 'landscape_4_3',
-            '3:4': 'portrait_4_3',
-          };
-
-          const falRes = await fetchWithRetry(
-            'https://fal.run/fal-ai/flux/schnell',
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Key ${apiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                prompt,
-                num_images: numImages,
-                image_size: falSizeMap[size] || 'square',
-                num_inference_steps: 4,
-                enable_safety_checker: true,
-              }),
-            },
-            { maxRetries: 2, baseDelayMs: 1000 }
-          );
-
-          if (!falRes.ok) {
-            const error = await falRes.json().catch(() => ({}));
-            throw new Error(error.detail || error.message || `FAL.ai error ${falRes.status}`);
-          }
-
-          const falData = await falRes.json();
-          images = falData.images?.map((img: any) => img.url) || [];
-          break;
+        if (negativePrompt) {
+          requestBody.negative_prompt = negativePrompt;
         }
 
-        case 'openai': {
-          const oaiRes = await fetchWithRetry(
-            'https://api.openai.com/v1/images/generations',
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: 'dall-e-3',
-                prompt,
-                n: 1, // DALL-E 3 only supports 1
-                size: '1024x1024',
-                quality: 'standard',
-              }),
+        structuredLog.info('image', 'falai_request', { model: falModel, requestId });
+
+        const falRes = await fetchWithRetry(
+          `https://fal.run/${falModel}`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Key ${apiKey}`,
+              'Content-Type': 'application/json',
             },
-            { maxRetries: 2, baseDelayMs: 1000 }
-          );
+            body: JSON.stringify(requestBody),
+          },
+          { maxRetries: 2, baseDelayMs: 1000 }
+        );
 
-          if (!oaiRes.ok) {
-            const error = await oaiRes.json().catch(() => ({}));
-            throw new Error(error.error?.message || `DALL-E error ${oaiRes.status}`);
-          }
-
-          const oaiData = await oaiRes.json();
-          images = oaiData.data?.map((img: any) => img.url) || [];
-          break;
+        if (!falRes.ok) {
+          const error = await falRes.json().catch(() => ({}));
+          throw new Error(error.detail || error.message || `FAL.ai error ${falRes.status}`);
         }
 
-        default:
-          return errorResponse('Invalid provider', 400);
+        const falData = await falRes.json();
+        images = falData.images?.map((img: any) => img.url) || [];
+      }
+
+      // ============ OPENAI DALL-E ============
+      else if (provider === 'openai') {
+        const isDalle3 = model === 'dall-e-3';
+
+        const sizeMap: Record<string, string> = {
+          '1:1': '1024x1024',
+          '16:9': '1792x1024',
+          '9:16': '1024x1792',
+          '4:3': '1024x1024',
+          '3:4': '1024x1024',
+        };
+
+        const oaiRes = await fetchWithRetry(
+          'https://api.openai.com/v1/images/generations',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: isDalle3 ? 'dall-e-3' : 'dall-e-2',
+              prompt,
+              n: isDalle3 ? 1 : Math.min(numImages, 4),
+              size: isDalle3 ? (sizeMap[size] || '1024x1024') : '1024x1024',
+              quality: 'standard',
+            }),
+          },
+          { maxRetries: 2, baseDelayMs: 1000 }
+        );
+
+        if (!oaiRes.ok) {
+          const error = await oaiRes.json().catch(() => ({}));
+          throw new Error(error.error?.message || `OpenAI error ${oaiRes.status}`);
+        }
+
+        const oaiData = await oaiRes.json();
+        images = oaiData.data?.map((img: any) => img.url) || [];
+      }
+
+      // ============ GOOGLE GEMINI (Imagen 3) ============
+      else if (provider === 'google') {
+        const aspectRatioMap: Record<string, string> = {
+          '1:1': '1:1',
+          '16:9': '16:9',
+          '9:16': '9:16',
+          '4:3': '4:3',
+          '3:4': '3:4',
+        };
+
+        const geminiRes = await fetchWithRetry(
+          `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              instances: [{ prompt }],
+              parameters: {
+                sampleCount: numImages,
+                aspectRatio: aspectRatioMap[size] || '1:1',
+              },
+            }),
+          },
+          { maxRetries: 2, baseDelayMs: 1000 }
+        );
+
+        if (!geminiRes.ok) {
+          const error = await geminiRes.json().catch(() => ({}));
+          throw new Error(error.error?.message || `Google Gemini error ${geminiRes.status}`);
+        }
+
+        const geminiData = await geminiRes.json();
+
+        // Gemini returns images as base64
+        if (geminiData.predictions) {
+          images = geminiData.predictions.map((p: any) =>
+            `data:image/png;base64,${p.bytesBase64Encoded}`
+          );
+        }
       }
 
       // Record success
@@ -311,7 +302,20 @@ export default async function handler(req: Request): Promise<Response> {
       duration: responseTime,
     });
 
-    return errorResponse(error.message || 'Internal server error', 500, {
+    // User-friendly error messages
+    let message = error.message || 'Erro interno do servidor';
+
+    if (message.includes('Failed to fetch')) {
+      message = 'Erro de conexão. Verifique sua internet.';
+    } else if (message.includes('401') || message.includes('Unauthorized')) {
+      message = 'API Key inválida.';
+    } else if (message.includes('429')) {
+      message = 'Limite de requisições excedido. Aguarde alguns minutos.';
+    } else if (message.includes('403')) {
+      message = 'Sem permissão para este recurso.';
+    }
+
+    return errorResponse(message, 500, {
       ...securityHeaders,
       'X-Request-ID': requestId,
     });

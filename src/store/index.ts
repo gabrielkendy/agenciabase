@@ -532,9 +532,10 @@ export const useStore = create<StoreState>()(
       })),
       clearNotifications: () => set({ notifications: [] }),
       
-      // API Config
+      // API Config - Keys são carregadas do localStorage ou configuradas pelo usuário
+      // As Edge Functions usam variáveis de ambiente do servidor (seguro)
       apiConfig: {
-        gemini_key: 'AIzaSyDQuaiWaBwgfFbvZ0LkntIl3__YuaM3JDU',
+        gemini_key: '',
         openrouter_key: '',
         openai_key: '',
         google_drive_connected: false,
@@ -544,7 +545,7 @@ export const useStore = create<StoreState>()(
         zapi_instance_id: '',
         zapi_token: '',
         zapi_client_token: '',
-        freepik_key: 'FPSX3195180d1b1cd6593b4d3167d2d3be44',
+        freepik_key: '',
         elevenlabs_key: '',
         falai_key: '',
       },

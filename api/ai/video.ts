@@ -1,6 +1,6 @@
 // Edge Function: AI Video Generation
-// Suporta: Freepik (Kling, Seedance, PixVerse, MiniMax), FAL.ai
-// Runtime: Serverless (requer polling longo)
+// Suporta: FAL.ai (Kling, MiniMax, Luma, SVD)
+// Runtime: Serverless (requer polling longo para alguns modelos)
 // Features: Retry, Circuit Breaker, Validation, Structured Logging
 
 import {
@@ -21,18 +21,18 @@ export const config = {
   maxDuration: 300, // 5 minutos max
 };
 
-// Freepik video endpoints
-const FREEPIK_VIDEO_ENDPOINTS: Record<string, string> = {
-  'kling-v2-5-pro': '/ai/image-to-video/kling-v2-5-pro',
-  'kling-v2-1-pro': '/ai/image-to-video/kling-v2-1-pro',
-  'seedance-pro': '/ai/image-to-video/seedance-pro-1080p',
-  'pixverse-v5': '/ai/image-to-video/pixverse-v5',
-  'pixverse-transition': '/ai/image-to-video/pixverse-v5-transition',
-  'minimax-hailuo': '/ai/image-to-video/minimax-hailuo-02-1080p',
+// FAL.ai video models mapping
+const FALAI_VIDEO_MODELS: Record<string, string> = {
+  'kling-pro': 'fal-ai/kling-video/v1.6/pro/image-to-video',
+  'kling-standard': 'fal-ai/kling-video/v1.6/standard/image-to-video',
+  'minimax': 'fal-ai/minimax/video-01/image-to-video',
+  'luma-ray2': 'fal-ai/luma-dream-machine/ray-2',
+  'fast-svd': 'fal-ai/fast-svd-lcm',
+  'stable-video': 'fal-ai/stable-video',
 };
 
 interface VideoRequest {
-  provider: 'freepik' | 'falai';
+  provider: 'falai';
   model: string;
   image: string; // URL or base64
   prompt?: string;
@@ -45,7 +45,7 @@ function validateRequest(body: any): { valid: boolean; errors: string[] } {
 
   errors.push(...validate.required(body.provider, 'provider'));
   errors.push(...validate.required(body.image, 'image'));
-  errors.push(...validate.enum(body.provider, 'provider', ['freepik', 'falai']));
+  errors.push(...validate.enum(body.provider, 'provider', ['falai']));
 
   // Validate image is base64 or URL
   if (body.image && !body.image.startsWith('data:') && !body.image.startsWith('http')) {
@@ -69,7 +69,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   try {
     const body: VideoRequest = await req.json();
-    const { provider, model, image, prompt = 'Smooth natural motion', duration = '5' } = body;
+    const { provider, model, image, prompt = 'Smooth natural motion, cinematic', duration = '5' } = body;
 
     // Validate
     const validation = validateRequest(body);
@@ -90,17 +90,12 @@ export default async function handler(req: Request): Promise<Response> {
     // Check circuit breaker
     if (circuitBreaker.isOpen(provider)) {
       structuredLog.warn('video', 'circuit_open', { provider, requestId });
-      return errorResponse(`${provider} temporarily unavailable. Try again later.`, 503);
+      return errorResponse(`${provider} temporariamente indisponível. Tente novamente em 1 minuto.`, 503);
     }
 
-    const apiKeys: Record<string, string> = {
-      freepik: process.env.FREEPIK_API_KEY || '',
-      falai: process.env.FALAI_API_KEY || '',
-    };
-
-    const apiKey = apiKeys[provider];
+    const apiKey = process.env.FALAI_API_KEY || '';
     if (!apiKey) {
-      return errorResponse(`${provider} API key not configured`, 500);
+      return errorResponse('FAL.ai API key não configurada no servidor', 500);
     }
 
     let videoUrl = '';
@@ -108,130 +103,56 @@ export default async function handler(req: Request): Promise<Response> {
     structuredLog.info('video', 'request_start', { provider, model, requestId });
 
     try {
-      switch (provider) {
-        case 'freepik': {
-          const endpoint = FREEPIK_VIDEO_ENDPOINTS[model];
-          if (!endpoint) {
-            return errorResponse('Invalid video model', 400);
-          }
+      // Get FAL.ai model endpoint
+      const falModel = FALAI_VIDEO_MODELS[model] || FALAI_VIDEO_MODELS['fast-svd'];
 
-          // Prepare image data
-          const imageData = image.startsWith('data:')
-            ? image.split(',')[1]
-            : image;
+      // Build request body based on model type
+      let requestBody: Record<string, any>;
 
-          const fpRes = await fetchWithRetry(
-            `https://api.freepik.com/v1${endpoint}`,
-            {
-              method: 'POST',
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'x-freepik-api-key': apiKey,
-              },
-              body: JSON.stringify({
-                image: imageData,
-                prompt,
-              }),
-            },
-            { maxRetries: 2, baseDelayMs: 2000 }
-          );
-
-          if (!fpRes.ok) {
-            const error = await fpRes.json().catch(() => ({}));
-            throw new Error(error.message || error.detail || `Freepik error ${fpRes.status}`);
-          }
-
-          const fpData = await fpRes.json();
-
-          // Poll for video completion
-          if (fpData.data?.id) {
-            let attempts = 0;
-            const maxAttempts = 120; // 4 minutos max polling
-
-            structuredLog.info('video', 'polling_start', { taskId: fpData.data.id, requestId });
-
-            while (attempts < maxAttempts) {
-              await new Promise(r => setTimeout(r, 2000));
-
-              const statusRes = await fetch(`https://api.freepik.com/v1${endpoint}/${fpData.data.id}`, {
-                headers: {
-                  'Accept': 'application/json',
-                  'x-freepik-api-key': apiKey,
-                },
-              });
-
-              const statusData = await statusRes.json();
-
-              if (statusData.data?.status === 'COMPLETED') {
-                videoUrl = statusData.data.video?.url || statusData.data.generated?.[0]?.url || '';
-                structuredLog.info('video', 'polling_complete', { taskId: fpData.data.id, attempts, requestId });
-                break;
-              }
-
-              if (statusData.data?.status === 'FAILED') {
-                throw new Error('Video generation failed');
-              }
-
-              attempts++;
-            }
-
-            if (attempts >= maxAttempts) {
-              throw new Error('Video generation timeout');
-            }
-          } else if (fpData.data?.video?.url) {
-            videoUrl = fpData.data.video.url;
-          }
-          break;
-        }
-
-        case 'falai': {
-          const falEndpoint = model.startsWith('fal-ai/') ? model : `fal-ai/${model}`;
-
-          let requestBody: Record<string, any>;
-
-          if (model.includes('kling')) {
-            requestBody = {
-              image_url: image,
-              prompt,
-              duration,
-              aspect_ratio: '16:9',
-            };
-          } else {
-            requestBody = {
-              image_url: image,
-              motion_bucket_id: 127,
-              fps: 7,
-              cond_aug: 0.02,
-            };
-          }
-
-          const falRes = await fetchWithRetry(
-            `https://fal.run/${falEndpoint}`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Key ${apiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(requestBody),
-            },
-            { maxRetries: 2, baseDelayMs: 2000, maxDelayMs: 30000 }
-          );
-
-          if (!falRes.ok) {
-            const error = await falRes.json().catch(() => ({}));
-            throw new Error(error.detail || error.message || `FAL.ai error ${falRes.status}`);
-          }
-
-          const falData = await falRes.json();
-          videoUrl = falData.video?.url || falData.video_url || falData.output?.video || '';
-          break;
-        }
-
-        default:
-          return errorResponse('Invalid provider', 400);
+      if (falModel.includes('kling')) {
+        requestBody = {
+          image_url: image,
+          prompt,
+          duration,
+          aspect_ratio: '16:9',
+        };
+      } else if (falModel.includes('minimax') || falModel.includes('luma')) {
+        requestBody = {
+          image_url: image,
+          prompt,
+        };
+      } else {
+        // SVD and other models
+        requestBody = {
+          image_url: image,
+          motion_bucket_id: 127,
+          fps: 7,
+          cond_aug: 0.02,
+        };
       }
+
+      structuredLog.info('video', 'falai_request', { model: falModel, requestId });
+
+      const falRes = await fetchWithRetry(
+        `https://fal.run/${falModel}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Key ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        },
+        { maxRetries: 2, baseDelayMs: 2000, maxDelayMs: 30000 }
+      );
+
+      if (!falRes.ok) {
+        const error = await falRes.json().catch(() => ({}));
+        throw new Error(error.detail || error.message || `FAL.ai error ${falRes.status}`);
+      }
+
+      const falData = await falRes.json();
+      videoUrl = falData.video?.url || falData.video_url || falData.output?.video || '';
 
       // Record success
       circuitBreaker.recordSuccess(provider);
@@ -242,7 +163,7 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     if (!videoUrl) {
-      throw new Error('No video URL returned');
+      throw new Error('URL do vídeo não retornada');
     }
 
     const responseTime = Date.now() - startTime;
@@ -276,7 +197,18 @@ export default async function handler(req: Request): Promise<Response> {
       duration: responseTime,
     });
 
-    return errorResponse(error.message || 'Internal server error', 500, {
+    // User-friendly error messages
+    let message = error.message || 'Erro interno do servidor';
+
+    if (message.includes('Failed to fetch')) {
+      message = 'Erro de conexão. Verifique sua internet.';
+    } else if (message.includes('401') || message.includes('Unauthorized')) {
+      message = 'API Key inválida.';
+    } else if (message.includes('429')) {
+      message = 'Limite de requisições excedido. Aguarde alguns minutos.';
+    }
+
+    return errorResponse(message, 500, {
       ...securityHeaders,
       'X-Request-ID': requestId,
     });
