@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { useStore } from '../store';
-import { freepikService, FreepikGenerationRequest } from '../services/freepikService';
+import { freepikService } from '../services/freepikService';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,26 +11,22 @@ type FilterType = 'all' | 'favorites' | 'recent';
 type ReferenceType = 'style' | 'character' | 'upload';
 
 // ========== IMAGE MODELS (Freepik API) ==========
+// Endpoints confirmados: https://docs.freepik.com/api-reference/
 const IMAGE_MODELS = [
-  // Auto (recommended)
-  { id: 'auto', name: 'Auto', provider: 'freepik', icon: '✨', description: 'IA escolhe o melhor', badge: 'SUGGESTED', badgeColor: 'gray' },
-  // Google Models (via Freepik)
-  { id: 'nano-banana-pro', name: 'Nano Banana Pro', provider: 'freepik', icon: '🍌', description: 'Google - Maior qualidade', badge: 'NEW', badgeColor: 'green', isLimited: true },
-  { id: 'nano-banana', name: 'Nano Banana', provider: 'freepik', icon: '🍌', description: 'Google - Alta qualidade', badge: '', badgeColor: '' },
-  { id: 'imagen-4-fast', name: 'Imagen 4 Fast', provider: 'freepik', icon: '🚀', description: 'Rapido, boa aderencia', badge: '', badgeColor: '' },
-  { id: 'imagen-4', name: 'Imagen 4', provider: 'freepik', icon: '🖼️', description: 'Alta aderencia ao prompt', badge: '', badgeColor: '' },
-  { id: 'imagen-3', name: 'Imagen 3', provider: 'freepik', icon: '🖼️', description: 'Imagens de alta qualidade', badge: '', badgeColor: '' },
-  // Seedream Models
-  { id: 'seedream-4.5', name: 'Seedream 4.5', provider: 'freepik', icon: '🌟', description: 'Multi-imagem estetica', badge: 'TRENDING', badgeColor: 'green' },
-  { id: 'seedream-4', name: 'Seedream 4', provider: 'freepik', icon: '🌱', description: 'Geracao consistente', badge: 'NEW', badgeColor: 'blue' },
-  { id: 'seedream', name: 'Seedream', provider: 'freepik', icon: '🌱', description: 'Criatividade excepcional', badge: '', badgeColor: '' },
+  // Freepik Mystic (nativo, muito estável) - RECOMENDADO
+  { id: 'mystic', name: 'Mystic', provider: 'freepik', icon: '🎨', description: 'Fotorrealista com LoRAs', badge: 'SUGGESTED', badgeColor: 'gray', endpoint: '/ai/mystic' },
+  // Gemini (Google) - via Freepik
+  { id: 'gemini-flash', name: 'Gemini 2.5 Flash', provider: 'freepik', icon: '🍌', description: 'Google Nano Banana', badge: 'NEW', badgeColor: 'green', endpoint: '/ai/gemini-2-5-flash-image-preview' },
+  // Seedream (ByteDance)
+  { id: 'seedream-v4-edit', name: 'Seedream 4 Edit', provider: 'freepik', icon: '✏️', description: 'Edicao com prompts', badge: 'NEW', badgeColor: 'blue', endpoint: '/ai/text-to-image/seedream-v4-edit' },
+  { id: 'seedream-v4', name: 'Seedream 4', provider: 'freepik', icon: '🌟', description: '4K, multi-imagem', badge: 'TRENDING', badgeColor: 'green', endpoint: '/ai/text-to-image/seedream-v4' },
+  { id: 'seedream', name: 'Seedream', provider: 'freepik', icon: '🌱', description: 'Criatividade excepcional', badge: '', badgeColor: '', endpoint: '/ai/text-to-image/seedream' },
   // Flux Models
-  { id: 'flux-2-pro', name: 'Flux.2 Pro', provider: 'freepik', icon: '⚡', description: 'Proxima geracao', badge: 'TRENDING', badgeColor: 'green' },
-  { id: 'flux-pro', name: 'Flux Pro', provider: 'freepik', icon: '⚡', description: 'Flux avancado', badge: '', badgeColor: '' },
-  { id: 'flux-dev', name: 'Flux Dev', provider: 'freepik', icon: '🔧', description: 'Desenvolvimento', badge: '', badgeColor: '' },
-  { id: 'hyperflux', name: 'HyperFlux', provider: 'freepik', icon: '💨', description: 'Mais rapido disponivel', badge: '', badgeColor: '' },
-  // Mystic (Freepik native)
-  { id: 'mystic', name: 'Mystic', provider: 'freepik', icon: '🎨', description: 'Freepik nativo, estilos', badge: '', badgeColor: '' },
+  { id: 'flux-pro-v1-1', name: 'Flux Pro 1.1', provider: 'freepik', icon: '⚡', description: 'Alta qualidade', badge: 'TRENDING', badgeColor: 'green', endpoint: '/ai/text-to-image/flux-pro-v1-1' },
+  { id: 'flux-dev', name: 'Flux Dev', provider: 'freepik', icon: '🔧', description: 'Desenvolvimento', badge: '', badgeColor: '', endpoint: '/ai/text-to-image/flux-dev' },
+  { id: 'hyperflux', name: 'HyperFlux', provider: 'freepik', icon: '💨', description: 'Ultra rapido', badge: '', badgeColor: '', endpoint: '/ai/text-to-image/hyperflux' },
+  // Classic Fast (endpoint padrão)
+  { id: 'classic', name: 'Classic Fast', provider: 'freepik', icon: '🖼️', description: 'Rapido e versatil', badge: '', badgeColor: '', endpoint: '/ai/text-to-image' },
   // FAL.ai Models
   { id: 'flux-schnell', name: 'Flux Schnell', provider: 'falai', icon: '⚡', description: 'FAL.ai - Ultra rapido', badge: '', badgeColor: '' },
   // OpenAI
@@ -38,24 +34,34 @@ const IMAGE_MODELS = [
 ];
 
 // ========== VIDEO MODELS ==========
+// Freepik + FAL.ai endpoints confirmados
 const VIDEO_MODELS = [
-  { id: 'fal-ai/kling-video/v1.6/pro/image-to-video', name: 'Kling 1.6 Pro', provider: 'falai', description: 'Kling AI Pro (10s)', speed: 'slow', quality: 'highest', icon: '🎥' },
-  { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: 'Kling 1.0', provider: 'falai', description: 'Kling AI Standard (5s)', speed: 'medium', quality: 'high', icon: '🎬' },
-  { id: 'fal-ai/minimax/video-01/image-to-video', name: 'Minimax Video', provider: 'falai', description: 'Alta fidelidade', speed: 'slow', quality: 'highest', icon: '🌟' },
-  { id: 'fal-ai/fast-svd-lcm', name: 'Fast SVD', provider: 'falai', description: 'Video rapido (2-4s)', speed: 'fast', quality: 'good', icon: '⚡' },
-  { id: 'fal-ai/stable-video', name: 'Stable Video', provider: 'falai', description: 'Alta qualidade (4s)', speed: 'medium', quality: 'high', icon: '📽️' },
-  { id: 'fal-ai/animatediff-v2v', name: 'AnimateDiff', provider: 'falai', description: 'Animacao estilizada', speed: 'slow', quality: 'highest', icon: '✨' },
+  // Freepik Video (confirmados)
+  { id: 'kling-v2-5-pro', name: 'Kling 2.5 Pro', provider: 'freepik', description: 'Kling via Freepik (melhor)', speed: 'slow', quality: 'highest', icon: '🎥', endpoint: '/ai/image-to-video/kling-v2-5-pro' },
+  { id: 'kling-v2-1-pro', name: 'Kling 2.1 Pro', provider: 'freepik', description: 'Kling v2.1 Pro', speed: 'slow', quality: 'highest', icon: '🎬', endpoint: '/ai/image-to-video/kling-v2-1-pro' },
+  { id: 'seedance-pro', name: 'Seedance Pro', provider: 'freepik', description: 'ByteDance 1080p', speed: 'medium', quality: 'high', icon: '🌟', endpoint: '/ai/image-to-video/seedance-pro-1080p' },
+  { id: 'pixverse-v5', name: 'PixVerse V5', provider: 'freepik', description: 'Video extension', speed: 'fast', quality: 'high', icon: '🎞️', endpoint: '/ai/image-to-video/pixverse-v5' },
+  { id: 'pixverse-transition', name: 'PixVerse Transition', provider: 'freepik', description: 'Video transition', speed: 'fast', quality: 'high', icon: '🔄', endpoint: '/ai/image-to-video/pixverse-v5-transition' },
+  { id: 'minimax-hailuo', name: 'MiniMax Hailuo', provider: 'freepik', description: 'Alta fidelidade 1080p', speed: 'slow', quality: 'highest', icon: '✨', endpoint: '/ai/image-to-video/minimax-hailuo-02-1080p' },
+  // FAL.ai Video (alternativo)
+  { id: 'fal-ai/kling-video/v1.6/pro/image-to-video', name: 'Kling 1.6 (FAL)', provider: 'falai', description: 'FAL.ai Kling Pro', speed: 'slow', quality: 'highest', icon: '📽️' },
+  { id: 'fal-ai/fast-svd-lcm', name: 'Fast SVD (FAL)', provider: 'falai', description: 'Video rapido', speed: 'fast', quality: 'good', icon: '⚡' },
 ];
 
 // ========== AI TOOLS ==========
+// Endpoints confirmados: https://docs.freepik.com/api-reference/
 const AI_TOOLS = [
-  { id: 'upscale', name: 'Upscale', icon: '🔍', description: 'Aumente resolucao ate 4x', color: 'blue' },
-  { id: 'remove-bg', name: 'Remover Fundo', icon: '✂️', description: 'Remova fundos automaticamente', color: 'green' },
-  { id: 'reimagine', name: 'Reimaginar', icon: '🔄', description: 'Recrie com novo estilo', color: 'purple' },
-  { id: 'recolor', name: 'Recolorir', icon: '🎨', description: 'Mude as cores', color: 'orange' },
-  { id: 'sketch', name: 'Sketch to Image', icon: '✏️', description: 'Esboco para imagem', color: 'pink' },
-  { id: 'relight', name: 'Relight', icon: '💡', description: 'Mude a iluminacao', color: 'yellow' },
-  { id: 'style-transfer', name: 'Style Transfer', icon: '🖌️', description: 'Transfira estilos', color: 'cyan' },
+  { id: 'upscale', name: 'Upscale Magnific', icon: '🔍', description: 'Aumente resolucao ate 4x', color: 'blue', endpoint: '/ai/image-upscaler' },
+  { id: 'upscale-precision', name: 'Upscale Precision V2', icon: '🔬', description: 'Upscale com detalhes', color: 'blue', endpoint: '/ai/image-upscaler-precision-v2' },
+  { id: 'remove-bg', name: 'Remover Fundo', icon: '✂️', description: 'Remova fundos automaticamente', color: 'green', endpoint: '/ai/beta/remove-background' },
+  { id: 'relight', name: 'Relight', icon: '💡', description: 'Mude a iluminacao', color: 'yellow', endpoint: '/ai/image-relight' },
+  { id: 'style-transfer', name: 'Style Transfer', icon: '🖌️', description: 'Transfira estilos', color: 'cyan', endpoint: '/ai/image-style-transfer' },
+  { id: 'expand', name: 'Expand Image', icon: '↔️', description: 'Expanda a imagem', color: 'purple', endpoint: '/ai/image-expand/flux-pro' },
+  { id: 'image-to-prompt', name: 'Image to Prompt', icon: '📝', description: 'Extraia prompt da imagem', color: 'pink', endpoint: '/ai/image-to-prompt' },
+  { id: 'improve-prompt', name: 'Melhorar Prompt', icon: '✨', description: 'Melhore seu prompt', color: 'orange', endpoint: '/ai/improve-prompt' },
+  { id: 'skin-enhancer', name: 'Skin Enhancer', icon: '👤', description: 'Melhore a pele', color: 'rose', endpoint: '/ai/skin-enhancer/flexible' },
+  { id: 'icon-gen', name: 'Gerar Icones', icon: '🎯', description: 'Crie icones com IA', color: 'indigo', endpoint: '/ai/text-to-icon/preview' },
+  { id: 'sound-effects', name: 'Efeitos Sonoros', icon: '🔊', description: 'Gere efeitos sonoros', color: 'emerald', endpoint: '/ai/sound-effects' },
 ];
 
 // ========== VOICES (ElevenLabs) ==========
@@ -104,7 +110,7 @@ interface Reference {
 }
 
 export const CreatorStudioPage = () => {
-  const { apiConfig, currentUser } = useStore();
+  const { apiConfig } = useStore();
   const [activeTab, setActiveTab] = useState<StudioTab>('image');
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -221,25 +227,9 @@ export const CreatorStudioPage = () => {
     return map[size] || 'square_1_1';
   };
 
-  // Map model to API endpoint
-  const getModelEndpoint = (modelId: string): string => {
-    const endpoints: Record<string, string> = {
-      'auto': '/ai/mystic',
-      'nano-banana-pro': '/ai/text-to-image/nano-banana-pro',
-      'nano-banana': '/ai/text-to-image/nano-banana',
-      'imagen-4-fast': '/ai/text-to-image/imagen-4-fast',
-      'imagen-4': '/ai/text-to-image/imagen-4',
-      'imagen-3': '/ai/text-to-image/imagen-3',
-      'seedream-4.5': '/ai/text-to-image/seedream-4-5',
-      'seedream-4': '/ai/text-to-image/seedream-4',
-      'seedream': '/ai/text-to-image/seedream',
-      'flux-2-pro': '/ai/text-to-image/flux-pro-v1-1',
-      'flux-pro': '/ai/text-to-image/flux-pro',
-      'flux-dev': '/ai/text-to-image/flux-dev',
-      'hyperflux': '/ai/text-to-image/hyperflux',
-      'mystic': '/ai/mystic',
-    };
-    return endpoints[modelId] || '/ai/mystic';
+  // Get model endpoint from model object
+  const getModelEndpoint = (model: typeof IMAGE_MODELS[0]): string => {
+    return (model as any).endpoint || '/ai/mystic';
   };
 
   // Generate Image
@@ -287,54 +277,70 @@ export const CreatorStudioPage = () => {
       if (model.provider === 'freepik') {
         freepikService.setApiKey(apiConfig.freepik_key!);
 
-        // Build request based on model
-        const endpoint = getModelEndpoint(model.id);
-        const isMycstic = endpoint === '/ai/mystic';
+        // Get endpoint from model
+        const endpoint = getModelEndpoint(model);
+        const isMystic = endpoint === '/ai/mystic';
 
-        if (isMycstic) {
-          const request: FreepikGenerationRequest = {
-            prompt: imagePrompt,
-            num_images: numImages,
-            image: { size: mapSizeToApi(imageSize) as any },
-            resolution: imageQuality as any,
-          };
-          urls = await freepikService.generateAndWait(request, currentUser?.id, currentUser?.name);
+        // Build request body based on endpoint type
+        const requestBody: any = {
+          prompt: imagePrompt,
+          num_images: numImages,
+        };
+
+        if (isMystic) {
+          // Mystic uses different parameter format
+          requestBody.image = { size: mapSizeToApi(imageSize) };
+          if (imageQuality !== '1k') {
+            requestBody.resolution = imageQuality;
+          }
         } else {
-          // Generic Freepik endpoint
-          const response = await fetch(`https://api.freepik.com/v1${endpoint}`, {
-            method: 'POST',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'x-freepik-api-key': apiConfig.freepik_key!,
-            },
-            body: JSON.stringify({
-              prompt: imagePrompt,
-              num_images: numImages,
-              aspect_ratio: imageSize,
-              resolution: imageQuality,
-              // Add references if any
-              ...(references.find(r => r.type === 'style') && { style_reference: references.find(r => r.type === 'style')?.url }),
-              ...(references.find(r => r.type === 'character') && { character_reference: references.find(r => r.type === 'character')?.url }),
-            }),
-          });
+          // Other endpoints use standard format
+          // Map size to API format
+          const sizeMap: Record<string, string> = {
+            '1:1': 'square_1_1',
+            '16:9': 'widescreen_16_9',
+            '9:16': 'portrait_9_16',
+            '4:3': 'landscape_4_3',
+            '3:4': 'portrait_3_4',
+          };
+          requestBody.image = { size: sizeMap[imageSize] || 'square_1_1' };
+        }
 
-          if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.message || err.detail || 'Erro ao gerar imagem');
-          }
+        // Make API request
+        const response = await fetch(`https://api.freepik.com/v1${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'x-freepik-api-key': apiConfig.freepik_key!,
+          },
+          body: JSON.stringify(requestBody),
+        });
 
-          const data = await response.json();
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          console.error('Freepik API error:', err);
+          throw new Error(err.message || err.detail || err.error?.message || `Erro ${response.status}`);
+        }
 
-          // Handle async generation (poll for results)
-          if (data.data?.id) {
-            const result = await freepikService.waitForGeneration(data.data.id);
-            urls = result.data.generated?.map(g => g.url) || [];
-          } else if (data.data?.generated) {
-            urls = data.data.generated.map((g: any) => g.url);
-          } else if (data.images) {
-            urls = data.images.map((img: any) => img.url);
-          }
+        const data = await response.json();
+        console.log('Freepik response:', data);
+
+        // Handle different response formats
+        if (data.data?.id && data.data?.status !== 'COMPLETED') {
+          // Async generation - poll for results
+          freepikService.setApiKey(apiConfig.freepik_key!);
+          const result = await freepikService.waitForGeneration(data.data.id);
+          urls = result.data.generated?.map(g => g.url) || [];
+        } else if (data.data?.generated) {
+          // Direct response with generated images
+          urls = data.data.generated.map((g: any) => g.url);
+        } else if (data.data?.[0]?.base64) {
+          // Base64 encoded images (Classic endpoint)
+          urls = data.data.map((img: any) => `data:image/png;base64,${img.base64}`);
+        } else if (data.images) {
+          // Alternative format
+          urls = data.images.map((img: any) => img.url || `data:image/png;base64,${img.base64}`);
         }
       } else if (model.provider === 'falai') {
         // FAL.ai Flux Schnell
@@ -423,8 +429,17 @@ export const CreatorStudioPage = () => {
       toast.error('Adicione uma imagem para gerar video');
       return;
     }
-    if (!apiConfig.falai_key) {
-      toast.error('Configure a API Key do FAL.ai');
+
+    const model = VIDEO_MODELS.find(m => m.id === videoModel);
+    if (!model) return;
+
+    // Check API keys based on provider
+    if (model.provider === 'freepik' && !apiConfig.freepik_key) {
+      toast.error('Configure a API Key do Freepik em Integracoes');
+      return;
+    }
+    if (model.provider === 'falai' && !apiConfig.falai_key) {
+      toast.error('Configure a API Key do FAL.ai em Integracoes');
       return;
     }
 
@@ -445,45 +460,101 @@ export const CreatorStudioPage = () => {
     });
 
     try {
-      let requestBody: Record<string, any> = {};
+      let videoUrl = '';
 
-      if (videoModel.includes('kling')) {
-        requestBody = {
-          image_url: videoSourceImage,
+      if (model.provider === 'freepik') {
+        // Freepik Video API
+        const endpoint = (model as any).endpoint;
+        const requestBody: any = {
+          image: videoSourceImage.startsWith('data:')
+            ? videoSourceImage.split(',')[1]
+            : videoSourceImage,
           prompt: videoPrompt || 'Smooth natural motion',
-          duration: videoDuration,
-          aspect_ratio: '16:9',
         };
-      } else if (videoModel.includes('minimax')) {
-        requestBody = {
-          image_url: videoSourceImage,
-          prompt: videoPrompt || 'Natural motion',
-        };
+
+        const response = await fetch(`https://api.freepik.com/v1${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'x-freepik-api-key': apiConfig.freepik_key!,
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          console.error('Freepik Video error:', error);
+          throw new Error(error.message || error.detail || `Erro ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Freepik Video response:', data);
+
+        // Poll for result if async
+        if (data.data?.id && data.data?.status !== 'COMPLETED') {
+          // Poll for video completion
+          let attempts = 0;
+          const maxAttempts = 60; // 2 minutes max
+          while (attempts < maxAttempts) {
+            await new Promise(r => setTimeout(r, 2000));
+            const statusRes = await fetch(`https://api.freepik.com/v1${endpoint}/${data.data.id}`, {
+              headers: { 'x-freepik-api-key': apiConfig.freepik_key! },
+            });
+            const statusData = await statusRes.json();
+
+            if (statusData.data?.status === 'COMPLETED') {
+              videoUrl = statusData.data.video?.url || statusData.data.generated?.[0]?.url;
+              break;
+            }
+            if (statusData.data?.status === 'FAILED') {
+              throw new Error('Geracao do video falhou');
+            }
+            attempts++;
+            setVideoProgress(Math.min(90, (attempts / maxAttempts) * 100));
+          }
+        } else if (data.data?.video?.url) {
+          videoUrl = data.data.video.url;
+        } else if (data.data?.generated?.[0]?.url) {
+          videoUrl = data.data.generated[0].url;
+        }
       } else {
-        requestBody = {
-          image_url: videoSourceImage,
-          motion_bucket_id: 127,
-          fps: 7,
-          cond_aug: 0.02,
-        };
+        // FAL.ai Video API
+        let requestBody: Record<string, any> = {};
+
+        if (videoModel.includes('kling')) {
+          requestBody = {
+            image_url: videoSourceImage,
+            prompt: videoPrompt || 'Smooth natural motion',
+            duration: videoDuration,
+            aspect_ratio: '16:9',
+          };
+        } else {
+          requestBody = {
+            image_url: videoSourceImage,
+            motion_bucket_id: 127,
+            fps: 7,
+            cond_aug: 0.02,
+          };
+        }
+
+        const response = await fetch('https://fal.run/' + videoModel, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Key ${apiConfig.falai_key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.detail || error.message || 'Erro ao gerar video');
+        }
+
+        const data = await response.json();
+        videoUrl = data.video?.url || data.video_url || data.output?.video;
       }
-
-      const response = await fetch('https://fal.run/' + videoModel, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Key ${apiConfig.falai_key}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || error.message || 'Erro ao gerar video');
-      }
-
-      const data = await response.json();
-      const videoUrl = data.video?.url || data.video_url || data.output?.video;
 
       setVideoProgress(100);
 
@@ -755,7 +826,7 @@ export const CreatorStudioPage = () => {
                             {model.badge}
                           </span>
                         )}
-                        {model.isLimited && <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400">LIMITED</span>}
+                        {(model as any).isLimited && <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400">LIMITED</span>}
                       </div>
                       <p className="text-xs text-gray-500">{model.description}</p>
                     </div>
