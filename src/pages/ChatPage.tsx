@@ -473,6 +473,8 @@ Responda APENAS com um JSON válido no formato:
       external_approvers: [],
       skip_external_approval: false,
       approval_link_sent: false,
+      approval_link_views: 0,
+      approval_link_view_history: [],
       approval_status: 'pending',
       comments: [],
       auto_schedule: false,

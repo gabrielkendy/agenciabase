@@ -49,6 +49,9 @@ interface StoreState {
   approveByExternal: (demandId: string, approverId: string, userName: string) => void;
   requestAdjustmentByExternal: (demandId: string, approverId: string, feedback: string, userName: string) => void;
   approveAllPendingByToken: (token: string, userName: string) => void;
+
+  // Histórico de visualização do link
+  recordApprovalLinkView: (token: string) => void;
   
   // Filters
   demandFilters: {
@@ -232,6 +235,9 @@ export const useStore = create<StoreState>()(
             skip_external_approval: demand.skip_external_approval || false,
             approval_link_sent: false,
             is_draft: demand.is_draft || false,
+            approval_link_views: 0,
+            approval_link_view_history: [],
+            approval_link_last_viewed: undefined,
           }]
         }));
         return id;
@@ -484,6 +490,31 @@ export const useStore = create<StoreState>()(
             } : d)
           }));
         });
+      },
+
+      // Registrar visualização do link de aprovação
+      recordApprovalLinkView: (token: string) => {
+        const now = new Date().toISOString();
+        const viewEntry = {
+          viewed_at: now,
+          ip_address: undefined,  // Poderia ser obtido via API
+          user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        };
+
+        set((state) => ({
+          demands: state.demands.map((d) => {
+            if (d.approval_token === token) {
+              return {
+                ...d,
+                approval_link_views: (d.approval_link_views || 0) + 1,
+                approval_link_view_history: [...(d.approval_link_view_history || []), viewEntry],
+                approval_link_last_viewed: now,
+                updated_at: now,
+              };
+            }
+            return d;
+          })
+        }));
       },
 
       // Filters

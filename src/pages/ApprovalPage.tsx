@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
@@ -7,7 +7,16 @@ import toast from 'react-hot-toast';
 
 export const ApprovalPage = () => {
   const { token } = useParams<{ token: string }>();
-  const { demands, clients, approveByExternal, requestAdjustmentByExternal, approveAllPendingByToken } = useStore();
+  const { demands, clients, approveByExternal, requestAdjustmentByExternal, approveAllPendingByToken, recordApprovalLinkView } = useStore();
+
+  // Registrar visualização apenas uma vez por sessão
+  const hasRecordedView = useRef(false);
+  useEffect(() => {
+    if (token && !hasRecordedView.current) {
+      recordApprovalLinkView(token);
+      hasRecordedView.current = true;
+    }
+  }, [token, recordApprovalLinkView]);
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [feedback, setFeedback] = useState('');

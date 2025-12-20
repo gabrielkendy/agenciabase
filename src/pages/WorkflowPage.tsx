@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { PublishModal } from '../components/PublishModal';
-import { Demand, DemandStatus, ContentType, SocialChannel, WORKFLOW_COLUMNS, SOCIAL_CHANNELS, ApproverAssignment, TeamMember, MediaFile, PublishResult } from '../types';
+import { Demand, DemandStatus, ContentType, SocialChannel, WORKFLOW_COLUMNS, SOCIAL_CHANNELS, ApproverAssignment, MediaFile, PublishResult } from '../types';
 import { notificationManager, NotificationTrigger } from '../services/zapiService';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
@@ -10,10 +10,13 @@ import toast from 'react-hot-toast';
 type ModalStep = 'content' | 'team';
 
 export const WorkflowPage = () => {
-  const { 
-    demands, clients, teamMembers, addDemand, updateDemand, deleteDemand, moveDemand, 
-    demandFilters, setDemandFilters, clearFilters, addContentHistory 
+  const {
+    demands, clients, teamMembers, addDemand, updateDemand, deleteDemand, moveDemand,
+    demandFilters, setDemandFilters, clearFilters, addContentHistory, currentUser
   } = useStore();
+
+  // Verificar se usuário pode aprovar internamente (apenas Admin/Gerente)
+  const canApproveInternal = currentUser?.role === 'admin' || currentUser?.role === 'manager' || currentUser?.role === 'Gerente' || currentUser?.role === 'Admin';
   
   const [showModal, setShowModal] = useState(false);
   const [modalStep, setModalStep] = useState<ModalStep>('content');
@@ -41,13 +44,14 @@ export const WorkflowPage = () => {
     media: [] as MediaFile[],
   });
 
-  // Form state - Step 2: Team & Approvers
+  // Form state - Step 2: Team (simplificado)
+  // skip_internal_approval e skip_external_approval sempre false = fluxo completo
   const [teamForm, setTeamForm] = useState({
     team_redator_id: '',
     team_designer_id: '',
-    skip_internal_approval: false,
+    skip_internal_approval: false,  // Sempre vai para aprovação interna
     internal_approvers: [] as ApproverAssignment[],
-    skip_external_approval: false,
+    skip_external_approval: false,  // Sempre vai para aprovação cliente
     external_approvers: [] as ApproverAssignment[],
   });
 
@@ -115,6 +119,15 @@ export const WorkflowPage = () => {
       return;
     }
     console.log('[Workflow] Avançando para team...');
+
+    // Auto-selecionar primeiro membro como Designer se nenhum estiver selecionado
+    if (!teamForm.team_designer_id && teamMembers.length > 0) {
+      const firstActive = teamMembers.find(m => m.is_active);
+      if (firstActive) {
+        setTeamForm(prev => ({ ...prev, team_designer_id: firstActive.id }));
+      }
+    }
+
     setModalStep('team');
   };
 
@@ -131,16 +144,28 @@ export const WorkflowPage = () => {
   };
 
   const handleFinalize = () => {
+    console.log('[Workflow] handleFinalize - Iniciando finalização');
+
+    // Validação básica
+    if (!form.title || !form.client_id) {
+      toast.error('Preencha título e cliente');
+      return;
+    }
+
     saveDemand(false);
   };
 
   const saveDemand = (isDraft: boolean) => {
+    console.log('[Workflow] saveDemand chamado', { isDraft, teamForm });
+
     const redator = getTeamMember(teamForm.team_redator_id);
     const designer = getTeamMember(teamForm.team_designer_id);
 
-    // Se não é rascunho e tem redator, vai direto para "conteudo"
-    // Se não é rascunho mas não tem redator e tem designer, vai para "design"
-    // Caso contrário fica em "rascunho"
+    // Lógica de status inicial simplificada:
+    // - Se é rascunho: fica em "rascunho"
+    // - Se tem redator: vai para "conteudo" (redator trabalha primeiro)
+    // - Se não tem redator mas tem designer: vai para "design"
+    // - Se não tem nenhum: fica em "rascunho"
     let initialStatus: DemandStatus = 'rascunho';
     if (!isDraft) {
       if (teamForm.team_redator_id) {
@@ -149,6 +174,8 @@ export const WorkflowPage = () => {
         initialStatus = 'design';
       }
     }
+
+    console.log('[Workflow] Status inicial:', initialStatus);
 
     const demandData = {
       user_id: '1',
@@ -171,88 +198,41 @@ export const WorkflowPage = () => {
       team_designer_id: teamForm.team_designer_id || undefined,
       team_designer_name: designer?.name,
 
-      // Approvers
-      internal_approvers: teamForm.internal_approvers,
-      skip_internal_approval: teamForm.skip_internal_approval,
-      external_approvers: teamForm.external_approvers,
-      skip_external_approval: teamForm.skip_external_approval,
+      // Approvers - Sempre segue fluxo completo
+      internal_approvers: [],  // Gerenciado automaticamente
+      skip_internal_approval: false,  // Sempre passa por aprovação interna
+      external_approvers: [],  // Gerenciado automaticamente
+      skip_external_approval: false,  // Sempre passa por aprovação cliente
 
       approval_status: 'pending' as const,
       approval_link_sent: false,
+      approval_link_views: 0,
+      approval_link_view_history: [],
       auto_schedule: form.auto_schedule,
       created_by_ai: false,
       is_draft: isDraft,
       comments: [],
     };
 
-    if (editingDemand) {
-      updateDemand(editingDemand.id, demandData);
-      toast.success('Demanda atualizada!');
-    } else {
-      addDemand(demandData);
-      const statusMsg = initialStatus === 'conteudo' ? 'enviada para Redator' :
-                       initialStatus === 'design' ? 'enviada para Designer' :
-                       isDraft ? 'salva como rascunho' : 'criada';
-      toast.success(`Demanda ${statusMsg}!`);
-    }
-    setShowModal(false);
-    resetForm();
-  };
+    try {
+      if (editingDemand) {
+        updateDemand(editingDemand.id, demandData);
+        toast.success('Demanda atualizada!');
+      } else {
+        addDemand(demandData);
+        const statusMsg = initialStatus === 'conteudo' ? 'enviada para Redator' :
+                         initialStatus === 'design' ? 'enviada para Designer' :
+                         isDraft ? 'salva como rascunho' : 'criada';
+        toast.success(`Demanda ${statusMsg}!`);
+      }
 
-  // Add internal approver
-  const addInternalApprover = (member: TeamMember) => {
-    if (teamForm.internal_approvers.length >= 2) {
-      toast.error('Máximo 2 aprovadores internos');
-      return;
+      console.log('[Workflow] Demanda salva com sucesso');
+      setShowModal(false);
+      resetForm();
+    } catch (error) {
+      console.error('[Workflow] Erro ao salvar demanda:', error);
+      toast.error('Erro ao salvar demanda');
     }
-    if (teamForm.internal_approvers.find((a) => a.approver_id === member.id)) {
-      toast.error('Aprovador já adicionado');
-      return;
-    }
-    const newApprover: ApproverAssignment = {
-      approver_id: member.id,
-      approver_name: member.name,
-      approver_email: member.email,
-      approver_phone: member.phone,
-      type: 'internal',
-      order: teamForm.internal_approvers.length + 1,
-      status: 'pending',
-    };
-    setTeamForm({ ...teamForm, internal_approvers: [...teamForm.internal_approvers, newApprover] });
-  };
-
-  // Remove internal approver
-  const removeInternalApprover = (id: string) => {
-    const filtered = teamForm.internal_approvers.filter((a) => a.approver_id !== id);
-    // Re-order
-    const reordered = filtered.map((a, i) => ({ ...a, order: i + 1 }));
-    setTeamForm({ ...teamForm, internal_approvers: reordered });
-  };
-
-  // Add external approver (from client approvers)
-  const addExternalApprover = (name: string, email: string, phone?: string) => {
-    if (teamForm.external_approvers.length >= 2) {
-      toast.error('Máximo 2 aprovadores externos');
-      return;
-    }
-    const id = `ext_${Date.now()}`;
-    const newApprover: ApproverAssignment = {
-      approver_id: id,
-      approver_name: name,
-      approver_email: email,
-      approver_phone: phone,
-      type: 'external',
-      order: teamForm.external_approvers.length + 1,
-      status: 'pending',
-    };
-    setTeamForm({ ...teamForm, external_approvers: [...teamForm.external_approvers, newApprover] });
-  };
-
-  // Remove external approver
-  const removeExternalApprover = (id: string) => {
-    const filtered = teamForm.external_approvers.filter((a) => a.approver_id !== id);
-    const reordered = filtered.map((a, i) => ({ ...a, order: i + 1 }));
-    setTeamForm({ ...teamForm, external_approvers: reordered });
   };
 
   // Handle file upload
@@ -416,8 +396,6 @@ export const WorkflowPage = () => {
     }
   };
 
-  // Get selected client's approvers
-  const selectedClient = getClient(form.client_id);
 
 
   // Demand Card Component
@@ -552,24 +530,30 @@ export const WorkflowPage = () => {
             </button>
           )}
 
-          {/* APROVAÇÃO INTERNA → Aprovar (vai para Cliente) ou Ajustes */}
+          {/* APROVAÇÃO INTERNA → Aprovar (vai para Cliente) ou Ajustes - APENAS ADMIN/GERENTE */}
           {demand.status === 'aprovacao_interna' && (
-            <>
-              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'ajustes', 'Solicitado ajustes!'); }} className="flex-1 text-xs bg-red-500/20 text-red-400 py-1.5 rounded-lg hover:bg-red-500/30">
-                🔄 Ajustes
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const nextStatus = demand.skip_external_approval ? 'aprovado_agendado' : 'aprovacao_cliente';
-                  const msg = demand.skip_external_approval ? 'Aprovado internamente! Pronto para agendar.' : 'Aprovado internamente! Enviado para Cliente.';
-                  sendTo(demand.id, nextStatus, msg);
-                }}
-                className="flex-1 text-xs bg-green-500/20 text-green-400 py-1.5 rounded-lg hover:bg-green-500/30"
-              >
-                ✅ Aprovar
-              </button>
-            </>
+            canApproveInternal ? (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'ajustes', 'Solicitado ajustes!'); }} className="flex-1 text-xs bg-red-500/20 text-red-400 py-1.5 rounded-lg hover:bg-red-500/30">
+                  🔄 Ajustes
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const nextStatus = demand.skip_external_approval ? 'aprovado_agendado' : 'aprovacao_cliente';
+                    const msg = demand.skip_external_approval ? 'Aprovado internamente! Pronto para agendar.' : 'Aprovado internamente! Enviado para Cliente.';
+                    sendTo(demand.id, nextStatus, msg);
+                  }}
+                  className="flex-1 text-xs bg-green-500/20 text-green-400 py-1.5 rounded-lg hover:bg-green-500/30"
+                >
+                  ✅ Aprovar
+                </button>
+              </>
+            ) : (
+              <div className="flex-1 text-xs text-center text-yellow-400 py-1.5">
+                🔒 Aguardando Admin/Gerente
+              </div>
+            )
           )}
 
           {/* APROVAÇÃO CLIENTE → Link + Aprovar ou Ajustes */}
@@ -1077,61 +1061,32 @@ export const WorkflowPage = () => {
               )}
 
 
-              {/* Step 2: Team & Approvers */}
+              {/* Step 2: Team - Simplificado */}
               {modalStep === 'team' && (
                 <div className="space-y-6">
-                  {/* 1. Creation Team */}
+                  {/* Equipe de Criação */}
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-3">
                       <span className="bg-gray-700 text-gray-400 w-5 h-5 rounded-full inline-flex items-center justify-center text-xs mr-2">1</span>
                       Selecione a equipe de criação:
                     </label>
                     <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
-                      <div className="p-3 border-b border-gray-700">
-                        <div className="relative">
-                          <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                          <input 
-                            type="text" 
-                            placeholder="Buscar usuário..." 
-                            className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none" 
-                          />
-                        </div>
-                      </div>
                       <div className="divide-y divide-gray-700">
                         {teamMembers.filter((m) => m.is_active).map((member) => {
-                          const isSelected = teamForm.team_redator_id === member.id || teamForm.team_designer_id === member.id;
+                          const isRedator = teamForm.team_redator_id === member.id;
+                          const isDesigner = teamForm.team_designer_id === member.id;
                           return (
                             <div key={member.id} className="flex items-center justify-between p-3 hover:bg-gray-700/30">
                               <div className="flex items-center gap-3">
-                                <label className="flex items-center cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        // Se não tem redator, define como redator
-                                        if (!teamForm.team_redator_id) {
-                                          setTeamForm({ ...teamForm, team_redator_id: member.id });
-                                        } else if (!teamForm.team_designer_id) {
-                                          // Se já tem redator mas não designer, define como designer
-                                          setTeamForm({ ...teamForm, team_designer_id: member.id });
-                                        }
-                                      } else {
-                                        // Remove de ambos os campos se desmarcado
-                                        setTeamForm({
-                                          ...teamForm,
-                                          team_redator_id: teamForm.team_redator_id === member.id ? '' : teamForm.team_redator_id,
-                                          team_designer_id: teamForm.team_designer_id === member.id ? '' : teamForm.team_designer_id
-                                        });
-                                      }
-                                    }}
-                                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-orange-500 focus:ring-orange-500 cursor-pointer"
-                                  />
-                                </label>
                                 <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-sm">
                                   {member.name.charAt(0)}
                                 </div>
-                                <span className="text-white text-sm">{member.name}</span>
+                                <div>
+                                  <span className="text-white text-sm">{member.name}</span>
+                                  <span className="text-gray-500 text-xs ml-2">
+                                    {member.role === 'manager' ? '(Gerente)' : member.role === 'admin' ? '(Admin)' : ''}
+                                  </span>
+                                </div>
                               </div>
                               <div className="flex items-center gap-2">
                                 <button
@@ -1139,234 +1094,76 @@ export const WorkflowPage = () => {
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    setTeamForm({ ...teamForm, team_redator_id: teamForm.team_redator_id === member.id ? '' : member.id });
+                                    setTeamForm({ ...teamForm, team_redator_id: isRedator ? '' : member.id });
                                   }}
                                   className={clsx(
                                     'px-3 py-1 rounded-lg text-xs transition',
-                                    teamForm.team_redator_id === member.id
+                                    isRedator
                                       ? 'bg-blue-500 text-white'
                                       : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                                   )}
                                 >
-                                  Redator
+                                  ✍️ Redator
                                 </button>
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    setTeamForm({ ...teamForm, team_designer_id: teamForm.team_designer_id === member.id ? '' : member.id });
+                                    setTeamForm({ ...teamForm, team_designer_id: isDesigner ? '' : member.id });
                                   }}
                                   className={clsx(
                                     'px-3 py-1 rounded-lg text-xs transition',
-                                    teamForm.team_designer_id === member.id
+                                    isDesigner
                                       ? 'bg-purple-500 text-white'
                                       : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                                   )}
                                 >
-                                  Designer
+                                  🎨 Designer
                                 </button>
-                                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full flex items-center gap-1">
-                                  <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
-                                  Acesso total
-                                </span>
                               </div>
                             </div>
                           );
                         })}
                       </div>
                     </div>
+
+                    {/* Resumo da seleção */}
+                    <div className="mt-4 p-4 bg-gray-800 rounded-xl">
+                      <div className="text-sm text-gray-400 mb-2">Resumo da equipe:</div>
+                      <div className="flex gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-blue-400">✍️</span>
+                          <span className="text-white text-sm">
+                            {teamForm.team_redator_id
+                              ? teamMembers.find(m => m.id === teamForm.team_redator_id)?.name
+                              : <span className="text-gray-500">Nenhum redator</span>}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-purple-400">🎨</span>
+                          <span className="text-white text-sm">
+                            {teamForm.team_designer_id
+                              ? teamMembers.find(m => m.id === teamForm.team_designer_id)?.name
+                              : <span className="text-gray-500">Nenhum designer</span>}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* 2. Internal Approvers */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-3">
-                      <span className="bg-gray-700 text-gray-400 w-5 h-5 rounded-full inline-flex items-center justify-center text-xs mr-2">2</span>
-                      Selecione até 2 aprovadores internos:
-                    </label>
-                    
-                    {/* Skip toggle */}
-                    <label className="flex items-center gap-3 mb-3 cursor-pointer">
-                      <div className={clsx(
-                        'w-10 h-5 rounded-full transition relative',
-                        teamForm.skip_internal_approval ? 'bg-orange-500' : 'bg-gray-600'
-                      )}>
-                        <div className={clsx(
-                          'w-4 h-4 bg-white rounded-full absolute top-0.5 transition',
-                          teamForm.skip_internal_approval ? 'left-5' : 'left-0.5'
-                        )}></div>
+                  {/* Info sobre fluxo de aprovação */}
+                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                      <span className="text-blue-400 text-xl">ℹ️</span>
+                      <div>
+                        <h4 className="text-blue-400 font-medium mb-1">Fluxo de aprovação</h4>
+                        <p className="text-sm text-gray-400">
+                          Após o design, a demanda vai para <strong className="text-white">Aprovação Interna</strong> (Admin/Gerente),
+                          depois para <strong className="text-white">Aprovação do Cliente</strong> via link.
+                        </p>
                       </div>
-                      <span className="text-sm text-gray-400">Demanda não necessita de aprovação interna</span>
-                      <input 
-                        type="checkbox" 
-                        checked={teamForm.skip_internal_approval} 
-                        onChange={(e) => setTeamForm({ ...teamForm, skip_internal_approval: e.target.checked })} 
-                        className="hidden" 
-                      />
-                    </label>
-
-                    {!teamForm.skip_internal_approval && (
-                      <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
-                        <div className="p-3 border-b border-gray-700">
-                          <div className="relative">
-                            <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                            <input 
-                              type="text" 
-                              placeholder="Buscar usuário..." 
-                              className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none" 
-                            />
-                          </div>
-                        </div>
-                        
-                        {/* Selected Approvers */}
-                        {teamForm.internal_approvers.length > 0 && (
-                          <div className="p-3 bg-orange-500/10 border-b border-gray-700">
-                            <div className="text-xs text-orange-400 mb-2">Aprovadores selecionados (em ordem):</div>
-                            <div className="flex gap-2">
-                              {teamForm.internal_approvers.map((a, i) => (
-                                <div key={a.approver_id} className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg">
-                                  <span className="w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center text-white text-xs">{i + 1}</span>
-                                  <span className="text-white text-sm">{a.approver_name}</span>
-                                  <button onClick={() => removeInternalApprover(a.approver_id)} className="text-gray-400 hover:text-red-400">
-                                    <Icons.X size={14} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        <div className="divide-y divide-gray-700">
-                          {teamMembers.filter((m) => m.is_active && !teamForm.internal_approvers.find((a) => a.approver_id === m.id)).map((member) => (
-                            <div 
-                              key={member.id} 
-                              onClick={() => addInternalApprover(member)}
-                              className="flex items-center justify-between p-3 hover:bg-gray-700/30 cursor-pointer"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-sm">
-                                  {member.name.charAt(0)}
-                                </div>
-                                <span className="text-white text-sm">{member.name}</span>
-                              </div>
-                              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full">
-                                Acesso total
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {!teamForm.skip_internal_approval && teamForm.internal_approvers.length === 2 && (
-                      <p className="text-xs text-yellow-400 mt-2">
-                        ⚠️ Aprovação em cadeia: o 2º aprovador só poderá aprovar após o 1º
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 3. External Approvers (Clients) */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-3">
-                      <span className="bg-gray-700 text-gray-400 w-5 h-5 rounded-full inline-flex items-center justify-center text-xs mr-2">3</span>
-                      Selecione até 2 clientes (aprovadores externos):
-                    </label>
-                    
-                    {/* Skip toggle */}
-                    <label className="flex items-center gap-3 mb-3 cursor-pointer">
-                      <div className={clsx(
-                        'w-10 h-5 rounded-full transition relative',
-                        teamForm.skip_external_approval ? 'bg-orange-500' : 'bg-gray-600'
-                      )}>
-                        <div className={clsx(
-                          'w-4 h-4 bg-white rounded-full absolute top-0.5 transition',
-                          teamForm.skip_external_approval ? 'left-5' : 'left-0.5'
-                        )}></div>
-                      </div>
-                      <span className="text-sm text-gray-400">Demanda não necessita de aprovação do cliente</span>
-                      <input 
-                        type="checkbox" 
-                        checked={teamForm.skip_external_approval} 
-                        onChange={(e) => setTeamForm({ ...teamForm, skip_external_approval: e.target.checked })} 
-                        className="hidden" 
-                      />
-                    </label>
-
-                    {!teamForm.skip_external_approval && (
-                      <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
-                        {/* Selected External Approvers */}
-                        {teamForm.external_approvers.length > 0 && (
-                          <div className="p-3 bg-orange-500/10 border-b border-gray-700">
-                            <div className="text-xs text-orange-400 mb-2">Aprovadores externos selecionados (em ordem):</div>
-                            <div className="flex gap-2 flex-wrap">
-                              {teamForm.external_approvers.map((a, i) => (
-                                <div key={a.approver_id} className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg">
-                                  <span className="w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center text-white text-xs">{i + 1}</span>
-                                  <span className="text-white text-sm">{a.approver_name}</span>
-                                  <span className="text-xs text-gray-500">{a.approver_email}</span>
-                                  <button onClick={() => removeExternalApprover(a.approver_id)} className="text-gray-400 hover:text-red-400">
-                                    <Icons.X size={14} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Client approvers from selected client */}
-                        {selectedClient?.approvers && selectedClient.approvers.length > 0 ? (
-                          <div className="divide-y divide-gray-700">
-                            {selectedClient.approvers
-                              .filter((a) => !teamForm.external_approvers.find((ea) => ea.approver_email === a.email))
-                              .map((approver) => (
-                              <div 
-                                key={approver.id} 
-                                onClick={() => addExternalApprover(approver.name, approver.email)}
-                                className="flex items-center justify-between p-3 hover:bg-gray-700/30 cursor-pointer"
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-500 rounded-full flex items-center justify-center text-white text-sm">
-                                    {approver.name.charAt(0)}
-                                  </div>
-                                  <div>
-                                    <span className="text-white text-sm block">{approver.name}</span>
-                                    <span className="text-gray-500 text-xs">{approver.email}</span>
-                                  </div>
-                                </div>
-                                <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-1 rounded-full">
-                                  Cliente
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="p-6 text-center text-gray-500">
-                            <p className="text-sm">Nenhum aprovador cadastrado para este cliente.</p>
-                            <p className="text-xs mt-1">Cadastre aprovadores na página de Clientes.</p>
-                          </div>
-                        )}
-                        
-                        {/* Add new external approver */}
-                        <div className="p-3 border-t border-gray-700">
-                          <button 
-                            onClick={() => {
-                              const name = prompt('Nome do aprovador:');
-                              const email = prompt('Email do aprovador:');
-                              if (name && email) addExternalApprover(name, email);
-                            }}
-                            className="w-full py-2 border border-dashed border-gray-600 rounded-lg text-gray-400 text-sm hover:border-orange-500 hover:text-orange-400 transition"
-                          >
-                            + Adicionar novo aprovador externo
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {!teamForm.skip_external_approval && teamForm.external_approvers.length === 2 && (
-                      <p className="text-xs text-yellow-400 mt-2">
-                        ⚠️ Aprovação em cadeia: o 2º aprovador só poderá aprovar após o 1º
-                      </p>
-                    )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1433,17 +1230,21 @@ export const WorkflowPage = () => {
         const demand = demands.find((d) => d.id === showApprovalModal);
         const client = demand ? getClient(demand.client_id) : null;
         const approver = demand?.external_approvers[0];
-        
+        const viewCount = demand?.approval_link_views || 0;
+        const viewHistory = demand?.approval_link_view_history || [];
+        const lastViewed = demand?.approval_link_last_viewed;
+
         return demand ? (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-900 rounded-2xl w-full max-w-lg">
+            <div className="bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
               {/* Header */}
               <div className="p-6 border-b border-gray-800 flex items-center justify-between">
+                <h3 className="text-white font-medium">Link de Aprovação</h3>
                 <button onClick={() => setShowApprovalModal(null)} className="text-gray-400 hover:text-white">
                   Fechar ✕
                 </button>
               </div>
-              
+
               {/* Content */}
               <div className="p-6 space-y-6">
                 {/* Icon */}
@@ -1455,14 +1256,14 @@ export const WorkflowPage = () => {
                   <p className="text-gray-400 text-sm mt-2">
                     Qualquer pessoa na internet com o link pode realizar a aprovação.
                     <br />
-                    Compartilhe-o apenas com o <span className="text-orange-400 font-medium">1º aprovador da demanda</span>:
+                    Compartilhe-o apenas com o <span className="text-orange-400 font-medium">aprovador da demanda</span>:
                   </p>
                 </div>
-                
+
                 {/* Approver Info */}
                 <div className="bg-gray-800 rounded-xl p-4 flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-white">{approver?.approver_name || client?.name || 'Aprovador'}</div>
+                    <div className="font-medium text-white">{approver?.approver_name || client?.name || 'Cliente'}</div>
                     <div className="text-sm text-gray-500">{approver?.approver_email || client?.email}</div>
                   </div>
                   <span className="text-xs bg-yellow-500/20 text-yellow-400 px-3 py-1.5 rounded-full flex items-center gap-1">
@@ -1470,26 +1271,73 @@ export const WorkflowPage = () => {
                     Aguardando aprovação
                   </span>
                 </div>
-                
+
                 {/* Link Copy */}
                 <div className="flex items-center gap-2">
                   <div className="flex-1 bg-gray-800 border border-gray-700 rounded-xl p-3 flex items-center gap-2">
                     <span className="text-blue-400">🔗</span>
                     <span className="text-sm text-gray-300 truncate flex-1">{generateApprovalLink(demand)}</span>
                   </div>
-                  <button 
-                    onClick={() => copyApprovalLink(demand)} 
+                  <button
+                    onClick={() => copyApprovalLink(demand)}
                     className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-xl text-sm transition font-medium"
                   >
                     📋 Copiar link
                   </button>
-                  <button 
-                    onClick={() => sendWhatsApp(demand)} 
+                  <button
+                    onClick={() => sendWhatsApp(demand)}
                     className="p-3 bg-green-500 hover:bg-green-600 text-white rounded-xl transition"
                     title="Enviar por WhatsApp"
                   >
                     💬
                   </button>
+                </div>
+
+                {/* Histórico de Visualização */}
+                <div className="bg-gray-800/50 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                      <span>👁️</span> Histórico de Visualização
+                    </h4>
+                    <span className={clsx(
+                      'text-xs px-2 py-1 rounded-full',
+                      viewCount > 0 ? 'bg-green-500/20 text-green-400' : 'bg-gray-700 text-gray-400'
+                    )}>
+                      {viewCount} visualização{viewCount !== 1 ? 'ões' : ''}
+                    </span>
+                  </div>
+
+                  {viewCount > 0 ? (
+                    <div className="space-y-2">
+                      {lastViewed && (
+                        <div className="text-xs text-gray-400 flex items-center gap-2 mb-3">
+                          <span>🕐</span>
+                          Última visualização: {new Date(lastViewed).toLocaleString('pt-BR')}
+                        </div>
+                      )}
+
+                      <div className="max-h-32 overflow-y-auto space-y-2">
+                        {viewHistory.slice(-5).reverse().map((view, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs bg-gray-700/50 rounded-lg p-2">
+                            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                            <span className="text-gray-300">
+                              {new Date(view.viewed_at).toLocaleString('pt-BR')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {viewHistory.length > 5 && (
+                        <p className="text-xs text-gray-500 text-center pt-2">
+                          +{viewHistory.length - 5} visualizações anteriores
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <span className="text-gray-500 text-sm">Link ainda não foi visualizado</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

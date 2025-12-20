@@ -349,7 +349,12 @@ export interface Demand {
   approval_token: string;
   approval_link_sent: boolean;
   approval_link_sent_at?: string;
-  
+
+  // Histórico de visualização do link
+  approval_link_views: number;
+  approval_link_view_history: ApprovalLinkHistory[];
+  approval_link_last_viewed?: string;
+
   // Status geral de aprovação
   approval_status: 'pending' | 'internal_approved' | 'approved' | 'needs_adjustment';
   
@@ -377,6 +382,12 @@ export interface DemandComment {
 }
 
 // ========== APPROVAL LINK ==========
+export interface ApprovalLinkHistory {
+  viewed_at: string;        // Data/hora da visualização
+  ip_address?: string;      // IP do visitante (opcional)
+  user_agent?: string;      // Browser/Device (opcional)
+}
+
 export interface ApprovalLink {
   id: string;
   demand_id: string;
@@ -389,6 +400,10 @@ export interface ApprovalLink {
   expires_at: string;
   created_at: string;
   viewed_at?: string;
+  // Novo: Histórico de visualizações
+  view_count: number;
+  view_history: ApprovalLinkHistory[];
+  last_viewed_at?: string;
 }
 
 // ========== CALENDAR & NOTIFICATIONS ==========
