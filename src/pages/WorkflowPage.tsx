@@ -259,6 +259,40 @@ export const WorkflowPage = () => {
 
     const redator = getTeamMember(teamForm.team_redator_id);
     const designer = getTeamMember(teamForm.team_designer_id);
+    const client = getClient(form.client_id);
+
+    // Criar external_approvers automaticamente a partir do cliente
+    let externalApprovers: ApproverAssignment[] = [];
+    
+    // Primeiro: tentar usar aprovadores cadastrados no cliente
+    if (client?.approvers && client.approvers.length > 0) {
+      externalApprovers = client.approvers
+        .filter(a => a.type === 'external')
+        .map((a, index) => ({
+          approver_id: a.id,
+          approver_name: a.name,
+          approver_email: a.email,
+          approver_phone: a.phone,
+          type: 'external' as const,
+          order: index + 1,
+          status: 'pending' as const,
+        }));
+    }
+    
+    // Se não tem aprovadores cadastrados, usar dados do próprio cliente
+    if (externalApprovers.length === 0 && client) {
+      externalApprovers = [{
+        approver_id: client.id,
+        approver_name: client.name,
+        approver_email: client.email,
+        approver_phone: client.phone,
+        type: 'external' as const,
+        order: 1,
+        status: 'pending' as const,
+      }];
+    }
+
+    console.log('[Workflow] External approvers:', externalApprovers);
 
     // Lógica de status inicial simplificada:
     // - Se é rascunho: fica em "rascunho"
@@ -297,10 +331,10 @@ export const WorkflowPage = () => {
       team_designer_id: teamForm.team_designer_id || undefined,
       team_designer_name: designer?.name,
 
-      // Approvers - Sempre segue fluxo completo
+      // Approvers - Preenchido automaticamente
       internal_approvers: [],  // Gerenciado automaticamente
       skip_internal_approval: false,  // Sempre passa por aprovação interna
-      external_approvers: [],  // Gerenciado automaticamente
+      external_approvers: externalApprovers,  // Preenchido com dados do cliente
       skip_external_approval: false,  // Sempre passa por aprovação cliente
 
       approval_status: 'pending' as const,
@@ -334,27 +368,93 @@ export const WorkflowPage = () => {
     }
   };
 
-  // Handle file upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Constantes de upload
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+  const MAX_IMAGE_WIDTH = 1200;
+  const IMAGE_QUALITY = 0.8;
+
+  // Função para comprimir imagem
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let { width, height } = img;
+          
+          // Redimensionar se maior que MAX_IMAGE_WIDTH
+          if (width > MAX_IMAGE_WIDTH) {
+            height = (height * MAX_IMAGE_WIDTH) / width;
+            width = MAX_IMAGE_WIDTH;
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Converter para JPEG com qualidade reduzida
+          const compressedUrl = canvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+          console.log(`[Workflow] Imagem comprimida: ${file.name} (${Math.round(compressedUrl.length / 1024)}KB)`);
+          resolve(compressedUrl);
+        };
+        img.onerror = () => reject(new Error('Erro ao carregar imagem'));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Handle file upload com validação e compressão
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log('[Workflow] handleFileUpload chamado');
     const files = e.target.files;
     if (!files) return;
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const url = event.target?.result as string;
+    for (const file of Array.from(files)) {
+      // Validar tamanho
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} é muito grande (${Math.round(file.size / 1024 / 1024)}MB). Máximo: 5MB`);
+        continue;
+      }
+
+      try {
+        const isImage = file.type.startsWith('image/');
+        const isVideo = file.type.startsWith('video/');
+        let url: string;
+
+        if (isImage && !file.type.includes('gif')) {
+          // Comprimir imagens (exceto GIFs)
+          url = await compressImage(file);
+          toast.success(`${file.name} comprimido e adicionado!`);
+        } else {
+          // Vídeos e outros: converter direto para base64
+          url = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => resolve(event.target?.result as string);
+            reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+            reader.readAsDataURL(file);
+          });
+          toast.success(`${file.name} adicionado!`);
+        }
+
         const newMedia: MediaFile = {
-          id: `media_${Date.now()}_${Math.random()}`,
+          id: `media_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           url,
-          type: file.type.startsWith('video') ? 'video' : file.type.startsWith('image') ? 'image' : 'document',
+          type: isVideo ? 'video' : isImage ? 'image' : 'document',
           name: file.name,
         };
-        console.log('[Workflow] Adicionando mídia:', file.name);
+
+        console.log('[Workflow] Adicionando mídia:', file.name, `(${Math.round(url.length / 1024)}KB)`);
         setForm((prev) => ({ ...prev, media: [...prev.media, newMedia] }));
-      };
-      reader.readAsDataURL(file);
-    });
+
+      } catch (error) {
+        console.error('[Workflow] Erro ao processar arquivo:', error);
+        toast.error(`Erro ao processar ${file.name}`);
+      }
+    }
 
     // Limpar o input para permitir re-upload do mesmo arquivo
     e.target.value = '';
@@ -1133,7 +1233,38 @@ export const WorkflowPage = () => {
                     </div>
                   </div>
 
-                  {/* 8. File Upload */}
+                  {/* 8. Caption/Legenda */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      <span className="bg-gray-700 text-gray-400 w-5 h-5 rounded-full inline-flex items-center justify-center text-xs mr-2">8</span>
+                      Legenda do Post
+                      <span className="text-gray-500 ml-1 text-xs">(o que vai aparecer na publicação)</span>
+                    </label>
+                    <textarea 
+                      value={form.caption} 
+                      onChange={(e) => setForm({ ...form, caption: e.target.value })} 
+                      placeholder="Ex: 🔥 Novidade chegando! Não perca essa oportunidade incrível..."
+                      rows={4}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none resize-none" 
+                    />
+                  </div>
+
+                  {/* 9. Hashtags */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      <span className="bg-gray-700 text-gray-400 w-5 h-5 rounded-full inline-flex items-center justify-center text-xs mr-2">9</span>
+                      Hashtags
+                    </label>
+                    <input 
+                      type="text" 
+                      value={form.hashtags} 
+                      onChange={(e) => setForm({ ...form, hashtags: e.target.value })} 
+                      placeholder="#marketing #socialmedia #agencia #conteudo" 
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none" 
+                    />
+                  </div>
+
+                  {/* 10. File Upload */}
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
                       <span className="bg-gray-700 text-gray-400 w-5 h-5 rounded-full inline-flex items-center justify-center text-xs mr-2">8</span>
@@ -1148,7 +1279,7 @@ export const WorkflowPage = () => {
                       </div>
                       <p className="text-gray-400 text-sm">Selecione um arquivo ou arraste o arquivo aqui.</p>
                       <p className="text-gray-600 text-xs mt-1">Formatos: DOCX, PDF, GIF, PNG, JPG, MP4, MOV ou WEBM</p>
-                      <p className="text-gray-600 text-xs">Tamanho: até 50mb</p>
+                      <p className="text-gray-600 text-xs">Tamanho máximo: 5MB (imagens são comprimidas automaticamente)</p>
                       <input 
                         ref={fileInputRef}
                         type="file" 
