@@ -25,9 +25,12 @@ export const ClientsPage = () => {
     billing_type: 'PIX' as 'BOLETO' | 'CREDIT_CARD' | 'PIX', payment_day: 10,
     address: { street: '', number: '', complement: '', neighborhood: '', city: '', state: '', zipCode: '' }
   });
-  
+
   // Validation state
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // CEP loading state
+  const [loadingCEP, setLoadingCEP] = useState(false);
 
   const filteredClients = clients.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -85,22 +88,31 @@ export const ClientsPage = () => {
   const handleCEPChange = async (cep: string) => {
     const formatted = masks.cep(cep);
     setFormData({ ...formData, address: { ...formData.address, zipCode: formatted } });
-    
+
     if (formatted.replace(/\D/g, '').length === 8) {
-      const address = await fetchAddressByCEP(formatted);
-      if (address) {
-        setFormData(prev => ({
-          ...prev,
-          address: { 
-            ...prev.address, 
-            street: address.street,
-            neighborhood: address.neighborhood,
-            city: address.city,
-            state: address.state,
-            zipCode: formatted 
-          }
-        }));
-        toast.success('Endereço encontrado!');
+      setLoadingCEP(true);
+      try {
+        const address = await fetchAddressByCEP(formatted);
+        if (address) {
+          setFormData(prev => ({
+            ...prev,
+            address: {
+              ...prev.address,
+              street: address.street,
+              neighborhood: address.neighborhood,
+              city: address.city,
+              state: address.state,
+              zipCode: formatted
+            }
+          }));
+          toast.success('Endereço encontrado!');
+        } else {
+          toast.error('CEP não encontrado');
+        }
+      } catch {
+        toast.error('Erro ao buscar CEP');
+      } finally {
+        setLoadingCEP(false);
       }
     }
   };
@@ -396,6 +408,16 @@ export const ClientsPage = () => {
                         className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none"
                       />
                     </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">Website</label>
+                      <input
+                        type="text"
+                        value={formData.website}
+                        onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                        placeholder="https://www.exemplo.com.br"
+                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none"
+                      />
+                    </div>
                   </div>
 
                   {/* Status and Color */}
@@ -478,13 +500,29 @@ export const ClientsPage = () => {
                     </div>
                     <div>
                       <label className="block text-xs text-gray-400 mb-1">CEP</label>
-                      <input
-                        type="text"
-                        value={formData.address.zipCode}
-                        onChange={(e) => handleCEPChange(e.target.value)}
-                        placeholder="00000-000"
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none"
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formData.address.zipCode}
+                          onChange={(e) => handleCEPChange(e.target.value)}
+                          placeholder="00000-000"
+                          className={clsx(
+                            'w-full bg-gray-800 border rounded-lg px-3 py-2 text-white text-sm focus:outline-none pr-10',
+                            loadingCEP ? 'border-orange-500' : 'border-gray-700 focus:border-orange-500'
+                          )}
+                        />
+                        {loadingCEP && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Icons.Loader size={16} className="animate-spin text-orange-400" />
+                          </div>
+                        )}
+                        {!loadingCEP && formData.address.street && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Icons.Check size={16} className="text-green-400" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-1">Digite o CEP para buscar o endereço automaticamente</p>
                     </div>
                   </div>
 
@@ -505,6 +543,16 @@ export const ClientsPage = () => {
                         type="text"
                         value={formData.address.number}
                         onChange={(e) => setFormData({ ...formData, address: { ...formData.address, number: e.target.value } })}
+                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">Complemento</label>
+                      <input
+                        type="text"
+                        value={formData.address.complement}
+                        onChange={(e) => setFormData({ ...formData, address: { ...formData.address, complement: e.target.value } })}
+                        placeholder="Apto, Sala, Bloco..."
                         className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none"
                       />
                     </div>

@@ -2,8 +2,181 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
-import { SOCIAL_CHANNELS } from '../types';
+import { SOCIAL_CHANNELS, MediaFile, SocialChannel } from '../types';
 import toast from 'react-hot-toast';
+
+// Componente de Carrossel de Mídia para Aprovação
+const ApprovalMediaCarousel = ({ media }: { media: MediaFile[] }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  if (media.length === 0) {
+    return (
+      <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+        <div className="text-center text-gray-400">
+          <span className="text-5xl">🖼️</span>
+          <p className="text-sm mt-2">Sem mídia</p>
+        </div>
+      </div>
+    );
+  }
+
+  const currentMedia = media[currentIndex];
+  const isVideo = currentMedia.type === 'video' ||
+    currentMedia.url?.match(/\.(mp4|webm|mov|avi)$/i) ||
+    currentMedia.name?.match(/\.(mp4|webm|mov|avi)$/i);
+
+  const goToPrev = () => {
+    if (videoRef.current) videoRef.current.pause();
+    setCurrentIndex(Math.max(0, currentIndex - 1));
+  };
+
+  const goToNext = () => {
+    if (videoRef.current) videoRef.current.pause();
+    setCurrentIndex(Math.min(media.length - 1, currentIndex + 1));
+  };
+
+  return (
+    <div className="relative">
+      {/* Mídia Principal */}
+      <div className="aspect-square bg-gray-100 relative overflow-hidden">
+        {isVideo ? (
+          <video
+            ref={videoRef}
+            src={currentMedia.url}
+            className="w-full h-full object-contain bg-black"
+            controls
+            playsInline
+            poster={currentMedia.thumbnail}
+          />
+        ) : (
+          <img
+            src={currentMedia.url}
+            alt={currentMedia.name || 'Mídia'}
+            className="w-full h-full object-cover"
+          />
+        )}
+
+        {/* Badge de Vídeo */}
+        {isVideo && (
+          <div className="absolute top-3 left-3 bg-black/70 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+            <Icons.Play size={12} />
+            Vídeo
+          </div>
+        )}
+
+        {/* Contador */}
+        {media.length > 1 && (
+          <div className="absolute top-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded-full">
+            {currentIndex + 1}/{media.length}
+          </div>
+        )}
+
+        {/* Navegação */}
+        {media.length > 1 && (
+          <>
+            <button
+              onClick={goToPrev}
+              disabled={currentIndex === 0}
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 hover:bg-white shadow-lg flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            >
+              <Icons.ChevronLeft size={20} className="text-gray-700" />
+            </button>
+            <button
+              onClick={goToNext}
+              disabled={currentIndex === media.length - 1}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 hover:bg-white shadow-lg flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            >
+              <Icons.ChevronRight size={20} className="text-gray-700" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Dots Indicadores */}
+      {media.length > 1 && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+          {media.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                if (videoRef.current) videoRef.current.pause();
+                setCurrentIndex(idx);
+              }}
+              className={`w-2 h-2 rounded-full transition-all ${
+                idx === currentIndex
+                  ? 'bg-white w-4'
+                  : 'bg-white/50 hover:bg-white/80'
+              }`}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Thumbnails */}
+      {media.length > 1 && (
+        <div className="flex gap-2 p-3 bg-gray-50 overflow-x-auto">
+          {media.map((m, idx) => {
+            const isThumbVideo = m.type === 'video' ||
+              m.url?.match(/\.(mp4|webm|mov|avi)$/i) ||
+              m.name?.match(/\.(mp4|webm|mov|avi)$/i);
+
+            return (
+              <button
+                key={m.id}
+                onClick={() => {
+                  if (videoRef.current) videoRef.current.pause();
+                  setCurrentIndex(idx);
+                }}
+                className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                  idx === currentIndex
+                    ? 'border-orange-500 ring-2 ring-orange-500/30'
+                    : 'border-transparent hover:border-gray-300'
+                }`}
+              >
+                {isThumbVideo ? (
+                  <>
+                    <video
+                      src={m.url}
+                      className="w-full h-full object-cover"
+                      muted
+                    />
+                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                      <Icons.Play size={16} className="text-white" />
+                    </div>
+                  </>
+                ) : (
+                  <img
+                    src={m.url}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Mapeamento de ícones de canais sociais
+const ChannelIcon = ({ channel, size = 20 }: { channel: SocialChannel; size?: number }) => {
+  const iconMap: Record<SocialChannel, React.ReactNode> = {
+    instagram: <Icons.Instagram size={size} className="text-[#E4405F]" />,
+    facebook: <Icons.Facebook size={size} className="text-[#1877F2]" />,
+    tiktok: <Icons.TikTok size={size} />,
+    youtube: <Icons.YouTube size={size} className="text-[#FF0000]" />,
+    linkedin: <Icons.LinkedIn size={size} className="text-[#0A66C2]" />,
+    twitter: <Icons.Twitter size={size} />,
+    pinterest: <Icons.Pinterest size={size} className="text-[#E60023]" />,
+    threads: <Icons.Threads size={size} />,
+    google_business: <Icons.Google size={size} className="text-[#4285F4]" />,
+  };
+
+  return iconMap[channel] || null;
+};
 
 export const ApprovalPage = () => {
   const { token } = useParams<{ token: string }>();
@@ -218,41 +391,22 @@ export const ApprovalPage = () => {
                   </span>
                 </div>
 
-                {/* Media Preview */}
-                <div className="relative">
-                  {currentDemand.media.length > 0 ? (
-                    <div className="aspect-square bg-gray-100">
-                      <img src={currentDemand.media[0].url} alt="" className="w-full h-full object-cover" />
-                      {currentDemand.media.length > 1 && (
-                        <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                          1/{currentDemand.media.length}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                      <div className="text-center text-gray-400">
-                        <span className="text-5xl">🖼️</span>
-                        <p className="text-sm mt-2">Sem mídia</p>
-                      </div>
-                    </div>
-                  )}
-                  {/* View Media Button */}
-                  <button className="absolute bottom-3 right-3 bg-white/90 hover:bg-white text-gray-700 text-xs px-3 py-1.5 rounded-lg shadow flex items-center gap-1">
-                    Ver mídia <Icons.ExternalLink size={12} />
-                  </button>
-                </div>
+                {/* Media Preview - Carrossel com Vídeo */}
+                <ApprovalMediaCarousel media={currentDemand.media} />
 
                 {/* Caption Section */}
                 <div className="p-4">
-                  {/* Channels */}
-                  <div className="flex gap-1 mb-3">
-                    {currentDemand.channels.map((ch) => {
-                      const channel = SOCIAL_CHANNELS.find((c) => c.id === ch);
-                      return channel ? (
-                        <span key={ch} className="text-lg">{channel.icon}</span>
-                      ) : null;
-                    })}
+                  {/* Channels - Ícones SVG */}
+                  <div className="flex gap-2 mb-3">
+                    {currentDemand.channels.map((ch) => (
+                      <div
+                        key={ch}
+                        className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center"
+                        title={SOCIAL_CHANNELS.find((c) => c.id === ch)?.label}
+                      >
+                        <ChannelIcon channel={ch} size={18} />
+                      </div>
+                    ))}
                   </div>
 
                   {/* Title */}

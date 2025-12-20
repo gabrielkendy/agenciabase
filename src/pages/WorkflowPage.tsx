@@ -9,6 +9,105 @@ import toast from 'react-hot-toast';
 
 type ModalStep = 'content' | 'team';
 
+// Componente de Carrossel de Mídia com suporte a imagem e vídeo
+const MediaCarousel = ({ media }: { media: MediaFile[] }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const currentMedia = media[currentIndex];
+
+  const goToPrev = () => setCurrentIndex(Math.max(0, currentIndex - 1));
+  const goToNext = () => setCurrentIndex(Math.min(media.length - 1, currentIndex + 1));
+
+  return (
+    <div className="relative">
+      {/* Mídia Principal */}
+      <div className="aspect-square bg-gray-800 rounded-xl overflow-hidden relative">
+        {currentMedia.type === 'video' ? (
+          <video
+            src={currentMedia.url}
+            className="w-full h-full object-cover"
+            controls
+            playsInline
+          />
+        ) : (
+          <img src={currentMedia.url} alt="" className="w-full h-full object-cover" />
+        )}
+
+        {/* Indicador de tipo */}
+        {currentMedia.type === 'video' && (
+          <div className="absolute top-3 left-3 bg-black/70 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+            <Icons.Play size={12} /> Vídeo
+          </div>
+        )}
+      </div>
+
+      {/* Navegação do Carrossel */}
+      {media.length > 1 && (
+        <>
+          {/* Botões de navegação */}
+          <button
+            onClick={goToPrev}
+            disabled={currentIndex === 0}
+            className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center disabled:opacity-30 transition"
+          >
+            <Icons.ChevronLeft size={18} />
+          </button>
+          <button
+            onClick={goToNext}
+            disabled={currentIndex === media.length - 1}
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center disabled:opacity-30 transition"
+          >
+            <Icons.ChevronRight size={18} />
+          </button>
+
+          {/* Indicadores (dots) */}
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {media.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCurrentIndex(idx)}
+                className={clsx(
+                  'w-2 h-2 rounded-full transition',
+                  idx === currentIndex ? 'bg-white' : 'bg-white/40 hover:bg-white/60'
+                )}
+              />
+            ))}
+          </div>
+
+          {/* Contador */}
+          <div className="absolute top-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded">
+            {currentIndex + 1} / {media.length}
+          </div>
+        </>
+      )}
+
+      {/* Thumbnails */}
+      {media.length > 1 && (
+        <div className="flex gap-2 mt-3 overflow-x-auto pb-2">
+          {media.map((m, idx) => (
+            <button
+              key={m.id}
+              onClick={() => setCurrentIndex(idx)}
+              className={clsx(
+                'flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition',
+                idx === currentIndex ? 'border-orange-500' : 'border-transparent hover:border-gray-600'
+              )}
+            >
+              {m.type === 'video' ? (
+                <div className="w-full h-full bg-gray-700 flex items-center justify-center relative">
+                  <video src={m.url} className="w-full h-full object-cover" muted />
+                  <Icons.Play size={16} className="absolute text-white" />
+                </div>
+              ) : (
+                <img src={m.url} alt="" className="w-full h-full object-cover" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const WorkflowPage = () => {
   const {
     demands, clients, teamMembers, addDemand, updateDemand, deleteDemand, moveDemand,
@@ -432,13 +531,31 @@ export const WorkflowPage = () => {
           </div>
         </div>
         
-        {/* Media Preview */}
+        {/* Media Preview - Suporta Imagem e Vídeo */}
         {demand.media.length > 0 && (
           <div className="mb-3 rounded-lg overflow-hidden bg-gray-900 aspect-video relative">
-            <img src={demand.media[0].url} alt="" className="w-full h-full object-cover" />
+            {demand.media[0].type === 'video' ? (
+              <video
+                src={demand.media[0].url}
+                className="w-full h-full object-cover"
+                muted
+                playsInline
+                onMouseEnter={(e) => e.currentTarget.play()}
+                onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+              />
+            ) : (
+              <img src={demand.media[0].url} alt="" className="w-full h-full object-cover" />
+            )}
+            {/* Indicador de tipo de mídia */}
+            {demand.media[0].type === 'video' && (
+              <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                <Icons.Play size={10} /> Vídeo
+              </div>
+            )}
+            {/* Contador de mídias */}
             {demand.media.length > 1 && (
-              <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                +{demand.media.length - 1}
+              <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                <Icons.Image size={10} /> {demand.media.length}
               </div>
             )}
           </div>
@@ -1399,11 +1516,9 @@ export const WorkflowPage = () => {
                   </div>
                 )}
                 
-                {/* Media */}
+                {/* Media - Carrossel com suporte a vídeo */}
                 {demand.media.length > 0 ? (
-                  <div className="aspect-square bg-gray-800 rounded-xl overflow-hidden">
-                    <img src={demand.media[0].url} alt="" className="w-full h-full object-cover" />
-                  </div>
+                  <MediaCarousel media={demand.media} />
                 ) : (
                   <div className="aspect-square bg-gradient-to-br from-gray-800 to-gray-700 rounded-xl flex items-center justify-center">
                     <div className="text-center text-gray-500">
