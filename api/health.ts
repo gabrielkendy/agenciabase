@@ -14,7 +14,7 @@ export const config = {
   regions: ['gru1', 'iad1', 'sfo1', 'fra1'],
 };
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(_req: Request): Promise<Response> {
   const requestId = generateRequestId();
   const startTime = Date.now();
 
