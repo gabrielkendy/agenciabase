@@ -1147,7 +1147,7 @@ export const WorkflowPage = () => {
                         <Icons.Upload size={32} className="mx-auto" />
                       </div>
                       <p className="text-gray-400 text-sm">Selecione um arquivo ou arraste o arquivo aqui.</p>
-                      <p className="text-gray-600 text-xs mt-1">Formatos: DOCX, PDF, GIF, PNG ou JPG</p>
+                      <p className="text-gray-600 text-xs mt-1">Formatos: DOCX, PDF, GIF, PNG, JPG, MP4, MOV ou WEBM</p>
                       <p className="text-gray-600 text-xs">Tamanho: até 50mb</p>
                       <input 
                         ref={fileInputRef}
@@ -1160,17 +1160,40 @@ export const WorkflowPage = () => {
                     </div>
                     {form.media.length > 0 && (
                       <div className="flex gap-2 mt-3 flex-wrap">
-                        {form.media.map((m) => (
-                          <div key={m.id} className="relative group">
-                            <img src={m.url} alt={m.name} className="w-20 h-20 object-cover rounded-lg" />
-                            <button 
-                              onClick={() => removeMedia(m.id)}
-                              className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
-                            >
-                              <Icons.X size={12} className="text-white" />
-                            </button>
-                          </div>
-                        ))}
+                        {form.media.map((m) => {
+                          const isVideo = m.type === 'video' ||
+                            m.url?.match(/\.(mp4|webm|mov|avi)$/i) ||
+                            m.name?.match(/\.(mp4|webm|mov|avi)$/i) ||
+                            m.url?.startsWith('data:video');
+
+                          return (
+                            <div key={m.id} className="relative group">
+                              {isVideo ? (
+                                <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-800 relative">
+                                  <video
+                                    src={m.url}
+                                    className="w-full h-full object-cover"
+                                    muted
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                    <Icons.Play size={20} className="text-white" />
+                                  </div>
+                                  <span className="absolute bottom-1 left-1 text-[9px] bg-black/70 text-white px-1 rounded">
+                                    Vídeo
+                                  </span>
+                                </div>
+                              ) : (
+                                <img src={m.url} alt={m.name} className="w-20 h-20 object-cover rounded-lg" />
+                              )}
+                              <button
+                                onClick={() => removeMedia(m.id)}
+                                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                              >
+                                <Icons.X size={12} className="text-white" />
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
