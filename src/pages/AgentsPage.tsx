@@ -273,6 +273,7 @@ export const AgentsPage: React.FC = () => {
           {isAdmin && (
             <div className="grid grid-cols-2 gap-2">
               <button
+                type="button"
                 onClick={() => setShowNewAgentModal(true)}
                 className="flex items-center justify-center gap-2 px-3 py-2.5 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium text-sm transition"
               >
@@ -280,6 +281,7 @@ export const AgentsPage: React.FC = () => {
                 Novo Agente
               </button>
               <button
+                type="button"
                 onClick={() => setShowImportAssistant(true)}
                 className="flex items-center justify-center gap-2 px-3 py-2.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg font-medium text-sm transition"
               >
@@ -334,25 +336,30 @@ export const AgentsPage: React.FC = () => {
         {selectedAgent ? (
           <>
             {/* Agent Header */}
-            <div className="p-6 border-b border-gray-800 bg-gray-900/50">
-              <div className="flex items-center gap-4">
-                <div className="text-5xl">{selectedAgent.avatar}</div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
-                    <h1 className="text-2xl font-bold text-white">{selectedAgent.name}</h1>
+            <div className="p-4 border-b border-gray-800 bg-gray-900/50">
+              <div className="flex items-start gap-4">
+                <div className="text-4xl flex-shrink-0">{selectedAgent.avatar}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h1 className="text-xl font-bold text-white">{selectedAgent.name}</h1>
                     {isAgentTrained(selectedAgent) && (
-                      <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-full font-medium flex items-center gap-1">
-                        🧠 Conhecimento Ativo
+                      <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] rounded-full font-medium flex items-center gap-1">
+                        🧠 Treinado
                       </span>
                     )}
+                    <span className={clsx('px-2 py-0.5 rounded-full text-[10px] font-medium', selectedAgent.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400')}>
+                      {selectedAgent.is_active ? 'Ativo' : 'Inativo'}
+                    </span>
                   </div>
-                  <p className="text-gray-400">{selectedAgent.role}</p>
-                  <p className="text-sm text-gray-500 mt-1">{selectedAgent.description}</p>
+                  <p className="text-sm text-gray-400 mt-0.5">{selectedAgent.role}</p>
+                  {/* Descrição com scroll */}
+                  {selectedAgent.description && (
+                    <div className="mt-2 max-h-16 overflow-y-auto bg-gray-800/50 rounded-lg p-2 border border-gray-700">
+                      <p className="text-xs text-gray-400 leading-relaxed">{selectedAgent.description}</p>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={clsx('px-3 py-1 rounded-full text-xs font-medium', selectedAgent.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400')}>
-                    {selectedAgent.is_active ? 'Ativo' : 'Inativo'}
-                  </span>
+                <div className="flex items-center gap-2 flex-shrink-0">
                   {isAdmin && (
                     <button onClick={() => setShowDeleteConfirm(true)} className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg">
                       <Icons.Trash size={18} />
@@ -412,7 +419,7 @@ export const AgentsPage: React.FC = () => {
               <Icons.Bot size={64} className="mx-auto mb-4 opacity-30" />
               <p>Selecione um agente</p>
               {isAdmin && (
-                <button onClick={() => setShowNewAgentModal(true)} className="mt-4 px-4 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium flex items-center gap-2 mx-auto">
+                <button type="button" onClick={() => setShowNewAgentModal(true)} className="mt-4 px-4 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium flex items-center gap-2 mx-auto">
                   <Icons.Plus size={18} />Criar novo agente
                 </button>
               )}
@@ -460,8 +467,8 @@ export const AgentsPage: React.FC = () => {
               </div>
             </div>
             <div className="p-6 border-t border-gray-800 flex gap-3 justify-end">
-              <button onClick={() => setShowNewAgentModal(false)} className="px-4 py-2 text-gray-400 hover:text-white">Cancelar</button>
-              <button onClick={handleCreateAgent} className="px-6 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium flex items-center gap-2">
+              <button type="button" onClick={() => setShowNewAgentModal(false)} className="px-4 py-2 text-gray-400 hover:text-white">Cancelar</button>
+              <button type="button" onClick={handleCreateAgent} className="px-6 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-lg font-medium flex items-center gap-2">
                 <Icons.Plus size={18} />Criar Agente
               </button>
             </div>
@@ -847,7 +854,7 @@ const ConfigTab: React.FC<ConfigTabProps> = ({ editForm, setEditForm, handleSave
 };
 
 // ============================================
-// TEST TAB COMPONENT
+// TEST TAB COMPONENT - Com Teste de Conexão API
 // ============================================
 interface TestTabProps {
   editForm: Partial<Agent>;
@@ -861,34 +868,129 @@ interface TestTabProps {
 }
 
 const TestTab: React.FC<TestTabProps> = ({ editForm, selectedAgent, testMessage, setTestMessage, testResponse, isTesting, handleTestAgent, isProviderConfigured }) => {
-  return (
-    <div className="max-w-2xl">
-      {!isProviderConfigured(editForm.provider || selectedAgent.provider) && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4">
-          <p className="text-red-400 text-sm">⚠️ Provider não configurado. Configure em Configurações.</p>
-        </div>
-      )}
+  const [apiTestResult, setApiTestResult] = useState<{status: 'idle' | 'testing' | 'success' | 'error', message: string}>({status: 'idle', message: ''});
+  const { apiConfig } = useStore();
 
-      <div className="bg-gray-800/50 rounded-xl p-4 mb-4 min-h-[300px] max-h-[400px] overflow-y-auto">
+  const testApiConnection = async () => {
+    const provider = editForm.provider || selectedAgent.provider;
+    setApiTestResult({status: 'testing', message: 'Testando conexão...'});
+
+    try {
+      if (provider === 'openai') {
+        if (!apiConfig.openai_key) throw new Error('API Key não configurada');
+        const res = await fetch('https://api.openai.com/v1/models', {
+          headers: { 'Authorization': `Bearer ${apiConfig.openai_key}` }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const data = await res.json();
+        setApiTestResult({status: 'success', message: `✓ OpenAI conectada! ${data.data?.length || 0} modelos disponíveis.`});
+      }
+      else if (provider === 'gemini') {
+        if (!apiConfig.gemini_key) throw new Error('API Key não configurada');
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiConfig.gemini_key}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const data = await res.json();
+        setApiTestResult({status: 'success', message: `✓ Gemini conectada! ${data.models?.length || 0} modelos disponíveis.`});
+      }
+      else if (provider === 'openrouter') {
+        if (!apiConfig.openrouter_key) throw new Error('API Key não configurada');
+        const res = await fetch('https://openrouter.ai/api/v1/models', {
+          headers: { 'Authorization': `Bearer ${apiConfig.openrouter_key}` }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const data = await res.json();
+        setApiTestResult({status: 'success', message: `✓ OpenRouter conectada! ${data.data?.length || 0} modelos disponíveis.`});
+      }
+      else {
+        setApiTestResult({status: 'error', message: `Provider ${provider} não suportado para teste.`});
+      }
+    } catch (error: any) {
+      setApiTestResult({status: 'error', message: `✗ Erro: ${error.message}`});
+    }
+  };
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      {/* Teste de Conexão API */}
+      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+            <Icons.Wifi size={16} className="text-blue-400" />
+            Testar Conexão API
+          </h3>
+          <button
+            type="button"
+            onClick={testApiConnection}
+            disabled={apiTestResult.status === 'testing'}
+            className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg text-xs font-medium flex items-center gap-1.5 transition disabled:opacity-50"
+          >
+            {apiTestResult.status === 'testing' ? (
+              <Icons.Loader size={14} className="animate-spin" />
+            ) : (
+              <Icons.Zap size={14} />
+            )}
+            Testar {editForm.provider || selectedAgent.provider}
+          </button>
+        </div>
+
+        {/* Status da API */}
+        <div className="flex items-center gap-3 text-sm">
+          <span className={clsx(
+            'w-3 h-3 rounded-full',
+            !isProviderConfigured(editForm.provider || selectedAgent.provider) ? 'bg-gray-500' :
+            apiTestResult.status === 'success' ? 'bg-green-500' :
+            apiTestResult.status === 'error' ? 'bg-red-500' :
+            apiTestResult.status === 'testing' ? 'bg-yellow-500 animate-pulse' :
+            'bg-gray-500'
+          )} />
+          <span className={clsx(
+            'text-sm',
+            apiTestResult.status === 'success' ? 'text-green-400' :
+            apiTestResult.status === 'error' ? 'text-red-400' :
+            'text-gray-400'
+          )}>
+            {apiTestResult.message || (
+              isProviderConfigured(editForm.provider || selectedAgent.provider)
+                ? 'Clique para testar a conexão'
+                : '⚠️ API Key não configurada em Configurações'
+            )}
+          </span>
+        </div>
+      </div>
+
+      {/* Área de Teste do Agente */}
+      <div className="bg-gray-800/50 rounded-xl p-4 min-h-[250px] max-h-[350px] overflow-y-auto">
         {testResponse ? (
           <div className="prose prose-invert prose-sm max-w-none">
             <p className="text-gray-300 whitespace-pre-wrap">{testResponse}</p>
           </div>
         ) : (
-          <div className="text-center text-gray-500 py-12">
-            <Icons.MessageSquare size={48} className="mx-auto mb-4 opacity-30" />
-            <p>Teste o agente enviando uma mensagem</p>
-            <p className="text-xs mt-2">Modelo: {AI_MODELS.find(m => m.id === (editForm.model || selectedAgent.model))?.name || editForm.model}</p>
+          <div className="text-center text-gray-500 py-8">
+            <Icons.MessageSquare size={40} className="mx-auto mb-3 opacity-30" />
+            <p className="text-sm">Teste o agente enviando uma mensagem</p>
+            <p className="text-xs mt-2 text-gray-600">
+              Modelo: {AI_MODELS.find(m => m.id === (editForm.model || selectedAgent.model))?.name || editForm.model}
+            </p>
           </div>
         )}
       </div>
+
+      {/* Input de Teste */}
       <div className="flex gap-2">
-        <input type="text" value={testMessage} onChange={(e) => setTestMessage(e.target.value)}
+        <input
+          type="text"
+          value={testMessage}
+          onChange={(e) => setTestMessage(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && handleTestAgent()}
           placeholder="Digite uma mensagem para testar..."
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none" />
-        <button onClick={handleTestAgent} disabled={isTesting || !isProviderConfigured(editForm.provider || selectedAgent.provider)}
-          className="px-6 py-3 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-white rounded-lg font-medium flex items-center gap-2">
+          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={handleTestAgent}
+          disabled={isTesting || !isProviderConfigured(editForm.provider || selectedAgent.provider)}
+          className="px-6 py-3 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-white rounded-lg font-medium flex items-center gap-2"
+        >
           {isTesting ? <Icons.Loader size={18} className="animate-spin" /> : <Icons.Send size={18} />}
         </button>
       </div>
