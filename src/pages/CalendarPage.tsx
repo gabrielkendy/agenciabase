@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
-import { Demand, SOCIAL_CHANNELS, CONTENT_TYPES, Client, MediaFile } from '../types';
+import { Demand, SOCIAL_CHANNELS, Client, MediaFile } from '../types';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 
