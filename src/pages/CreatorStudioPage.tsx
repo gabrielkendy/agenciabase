@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { useStore } from '../store';
-import { freepikService } from '../services/freepikService';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
@@ -262,11 +261,14 @@ export const CreatorStudioPage = () => {
       console.log(`[Edge Function] Gerando imagem via /api/ai/image`);
       console.log(`[Edge Function] Provider: ${model.provider}, Model: ${model.id}`);
 
-      // Chamar Edge Function - API keys ficam seguras no servidor
+      // Chamar Edge Function - com fallback API key do store
       const response = await fetch('/api/ai/image', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Key': model.provider === 'falai' ? (apiConfig.falai_key || '') : 
+                       model.provider === 'openai' ? (apiConfig.openai_key || '') :
+                       model.provider === 'google' ? (apiConfig.gemini_key || '') : '',
         },
         body: JSON.stringify({
           provider: model.provider,
@@ -349,11 +351,12 @@ export const CreatorStudioPage = () => {
       console.log(`[Edge Function] Gerando video via /api/ai/video`);
       console.log(`[Edge Function] Model: ${model.id}`);
 
-      // Chamar Edge Function - API keys ficam seguras no servidor
+      // Chamar Edge Function - com fallback API key do store
       const response = await fetch('/api/ai/video', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Key': apiConfig.falai_key || '',
         },
         body: JSON.stringify({
           provider: 'falai',
@@ -391,14 +394,10 @@ export const CreatorStudioPage = () => {
     }
   };
 
-  // Generate Audio
+  // Generate Audio - Via Edge Function (seguro, escalável)
   const generateAudio = async () => {
     if (!audioText.trim()) {
       toast.error('Digite o texto');
-      return;
-    }
-    if (!apiConfig.elevenlabs_key) {
-      toast.error('Configure a API Key do ElevenLabs');
       return;
     }
 
@@ -416,27 +415,38 @@ export const CreatorStudioPage = () => {
     });
 
     try {
-      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${audioVoice}`, {
+      console.log(`[Edge Function] Gerando audio via /api/ai/voice`);
+      
+      // Chamar Edge Function - com fallback API key do store
+      const response = await fetch('/api/ai/voice', {
         method: 'POST',
         headers: {
-          'Accept': 'audio/mpeg',
           'Content-Type': 'application/json',
-          'xi-api-key': apiConfig.elevenlabs_key,
+          'X-API-Key': apiConfig.elevenlabs_key || '',
         },
         body: JSON.stringify({
           text: audioText,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.5, similarity_boost: 0.8 },
+          voiceId: audioVoice,
+          stability: 0.5,
+          similarityBoost: 0.8,
         }),
       });
 
-      if (!response.ok) throw new Error('Erro ElevenLabs');
+      const result = await response.json();
 
-      const audioBlob = await response.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Erro ao gerar audio');
+      }
 
-      updateHistoryItem(itemId, { url: audioUrl, status: 'completed' });
-      toast.success('Audio gerado!');
+      const audioUrl = result.data?.audio;
+      console.log(`[Edge Function] Audio Response:`, result);
+
+      if (audioUrl) {
+        updateHistoryItem(itemId, { url: audioUrl, status: 'completed' });
+        toast.success('Audio gerado!');
+      } else {
+        throw new Error('Audio nao retornado');
+      }
     } catch (error: any) {
       updateHistoryItem(itemId, { status: 'error', error: error.message });
       toast.error(`Erro: ${error.message}`);
@@ -445,14 +455,10 @@ export const CreatorStudioPage = () => {
     }
   };
 
-  // Process AI Tool
+  // Process AI Tool - Via Edge Function (seguro, escalável)
   const processAITool = async () => {
     if (!toolSourceImage) {
       toast.error('Selecione uma imagem');
-      return;
-    }
-    if (!apiConfig.freepik_key) {
-      toast.error('Configure a API Key do Freepik');
       return;
     }
 
@@ -477,47 +483,40 @@ export const CreatorStudioPage = () => {
     }, 500);
 
     try {
-      freepikService.setApiKey(apiConfig.freepik_key);
-      let resultUrl = '';
-
-      const imageBase64 = toolSourceImage.startsWith('data:')
-        ? toolSourceImage.split(',')[1]
-        : toolSourceImage;
-
-      if (selectedTool === 'upscale') {
-        const response = await freepikService.upscaleImage({ image: imageBase64, scale: toolScale, creativity: 0.3 });
-        const result = await freepikService.waitForGeneration(response.data.id);
-        resultUrl = result.data.generated?.[0]?.url || '';
-      } else if (selectedTool === 'remove-bg') {
-        const response = await freepikService.removeBackground(imageBase64);
-        const result = await freepikService.waitForGeneration(response.data.id);
-        resultUrl = result.data.generated?.[0]?.url || '';
-      } else if (selectedTool === 'reimagine') {
-        const response = await freepikService.reimagineImage({ image: imageBase64, prompt: toolPrompt, mode: 'creative', strength: 0.7 });
-        const result = await freepikService.waitForGeneration(response.data.id);
-        resultUrl = result.data.generated?.[0]?.url || '';
-      } else if (selectedTool === 'recolor') {
-        if (!toolPrompt.trim()) throw new Error('Digite as cores desejadas');
-        const response = await freepikService.recolorImage({ image: imageBase64, prompt: toolPrompt });
-        const result = await freepikService.waitForGeneration(response.data.id);
-        resultUrl = result.data.generated?.[0]?.url || '';
-      } else if (selectedTool === 'sketch') {
-        if (!toolPrompt.trim()) throw new Error('Descreva a imagem');
-        const response = await freepikService.sketchToImage({ image: imageBase64, prompt: toolPrompt, style: 'realistic' });
-        const result = await freepikService.waitForGeneration(response.data.id);
-        resultUrl = result.data.generated?.[0]?.url || '';
-      } else if (selectedTool === 'relight') {
-        const response = await freepikService.relightImage(imageBase64, toolPrompt.trim() || 'left');
-        const result = await freepikService.waitForGeneration(response.data.id);
-        resultUrl = result.data.generated?.[0]?.url || '';
-      } else if (selectedTool === 'style-transfer') {
+      console.log(`[Edge Function] Processando tool via /api/ai/tools`);
+      
+      // Preparar opções baseadas na tool
+      const options: Record<string, any> = {};
+      if (selectedTool === 'upscale') options.scale = toolScale;
+      if (selectedTool === 'style-transfer') {
         const styleRef = references.find(r => r.type === 'style');
         if (!styleRef) throw new Error('Adicione uma imagem de estilo em References');
-        const styleBase64 = styleRef.url.startsWith('data:') ? styleRef.url.split(',')[1] : styleRef.url;
-        const response = await freepikService.styleTransfer(imageBase64, styleBase64);
-        const result = await freepikService.waitForGeneration(response.data.id);
-        resultUrl = result.data.generated?.[0]?.url || '';
+        options.styleImage = styleRef.url;
       }
+
+      // Chamar Edge Function - com fallback API key do store
+      const response = await fetch('/api/ai/tools', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiConfig.freepik_key || '',
+        },
+        body: JSON.stringify({
+          tool: selectedTool,
+          image: toolSourceImage,
+          prompt: toolPrompt,
+          options,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Erro ao processar');
+      }
+
+      const resultUrl = result.data?.url || result.data?.result;
+      console.log(`[Edge Function] Tool Response:`, result);
 
       clearInterval(progressInterval);
       setToolProgress(100);

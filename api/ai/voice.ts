@@ -1,7 +1,7 @@
 // Edge Function: AI Voice Synthesis
 // Suporta: ElevenLabs
 // Runtime: Edge
-// Features: Retry, Circuit Breaker, Validation, Structured Logging
+// FALLBACK: Aceita API key via header X-API-Key ou body.apiKey
 
 import {
   fetchWithRetry,
@@ -21,9 +21,8 @@ export const config = {
   regions: ['gru1', 'iad1', 'sfo1', 'fra1'],
 };
 
-// ElevenLabs voices
 const VOICES: Record<string, string> = {
-  'daniel-pt': 'onwK4e9ZLuTAKqWW03F9', // Portugues BR
+  'daniel-pt': 'onwK4e9ZLuTAKqWW03F9',
   'sarah-en': 'EXAVITQu4vr4xnSDxMaL',
   'rachel-en': '21m00Tcm4TlvDq8ikWAM',
   'adam-en': 'pNInz6obpgDQGcFmaJgB',
@@ -36,31 +35,34 @@ interface VoiceRequest {
   voiceId?: string;
   stability?: number;
   similarityBoost?: number;
+  apiKey?: string;
 }
 
-// Validate request
 function validateRequest(body: any): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
-
   errors.push(...validate.required(body.text, 'text'));
   errors.push(...validate.string(body.text, 'text', { minLength: 1, maxLength: 5000 }));
-
   if (body.stability !== undefined) {
     errors.push(...validate.number(body.stability, 'stability', { min: 0, max: 1 }));
   }
-
   if (body.similarityBoost !== undefined) {
     errors.push(...validate.number(body.similarityBoost, 'similarityBoost', { min: 0, max: 1 }));
   }
-
   return { valid: errors.length === 0, errors };
+}
+
+function getApiKey(req: Request, body: VoiceRequest): string {
+  if (process.env.ELEVENLABS_API_KEY) return process.env.ELEVENLABS_API_KEY;
+  const headerKey = req.headers.get('X-API-Key');
+  if (headerKey) return headerKey;
+  if (body.apiKey) return body.apiKey;
+  return '';
 }
 
 export default async function handler(req: Request): Promise<Response> {
   const requestId = generateRequestId();
   const startTime = Date.now();
 
-  // CORS
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
@@ -72,41 +74,31 @@ export default async function handler(req: Request): Promise<Response> {
     const body: VoiceRequest = await req.json();
     const { text, voice, voiceId, stability = 0.5, similarityBoost = 0.75 } = body;
 
-    // Validate
     const validation = validateRequest(body);
     if (!validation.valid) {
-      structuredLog.warn('voice', 'validation_failed', { errors: validation.errors, requestId });
       return errorResponse(validation.errors.join(', '), 400);
     }
 
-    // Rate limit
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
     const rateLimit = edgeRateLimit.check(`voice:${ip}`, 20, 60000);
 
     if (!rateLimit.allowed) {
-      structuredLog.warn('voice', 'rate_limit_exceeded', { ip, requestId });
       return errorResponse('Rate limit exceeded. Voice: 20/min', 429, edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 20));
     }
 
-    // Check circuit breaker
     if (circuitBreaker.isOpen('elevenlabs')) {
-      structuredLog.warn('voice', 'circuit_open', { provider: 'elevenlabs', requestId });
-      return errorResponse('ElevenLabs temporarily unavailable. Try again later.', 503);
+      return errorResponse('ElevenLabs temporariamente indisponível.', 503);
     }
 
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const apiKey = getApiKey(req, body);
     if (!apiKey) {
-      return errorResponse('ElevenLabs API key not configured', 500);
+      return errorResponse('ElevenLabs API key não configurada. Configure nas variáveis de ambiente do Vercel.', 500);
     }
 
-    // Resolve voice ID
     const resolvedVoiceId = voiceId || (voice ? VOICES[voice] : VOICES['daniel-pt']);
-
     if (!resolvedVoiceId) {
-      return errorResponse('Invalid voice', 400);
+      return errorResponse('Voz inválida', 400);
     }
-
-    structuredLog.info('voice', 'request_start', { voiceId: resolvedVoiceId, textLength: text.length, requestId });
 
     try {
       const elRes = await fetchWithRetry(
@@ -121,10 +113,7 @@ export default async function handler(req: Request): Promise<Response> {
           body: JSON.stringify({
             text,
             model_id: 'eleven_multilingual_v2',
-            voice_settings: {
-              stability,
-              similarity_boost: similarityBoost,
-            },
+            voice_settings: { stability, similarity_boost: similarityBoost },
           }),
         },
         { maxRetries: 2, baseDelayMs: 1000 }
@@ -135,20 +124,10 @@ export default async function handler(req: Request): Promise<Response> {
         throw new Error(error.detail?.message || error.message || `ElevenLabs error ${elRes.status}`);
       }
 
-      // Record success
       circuitBreaker.recordSuccess('elevenlabs');
 
-      // Return audio as base64 for easier handling
       const audioBuffer = await elRes.arrayBuffer();
       const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
-
-      const responseTime = Date.now() - startTime;
-
-      structuredLog.request('voice', 'request_complete', startTime, true, {
-        voiceId: resolvedVoiceId,
-        textLength: text.length,
-        requestId,
-      });
 
       return successResponse(
         {
@@ -156,13 +135,12 @@ export default async function handler(req: Request): Promise<Response> {
           format: 'mp3',
           voiceId: resolvedVoiceId,
           textLength: text.length,
-          responseTimeMs: responseTime,
+          responseTimeMs: Date.now() - startTime,
         },
         {
           ...edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 20),
           ...securityHeaders,
           'X-Request-ID': requestId,
-          'Cache-Control': 'public, max-age=86400',
         }
       );
 
@@ -172,16 +150,7 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
   } catch (error: any) {
-    const responseTime = Date.now() - startTime;
-
-    structuredLog.error('voice', 'request_failed', error, {
-      requestId,
-      duration: responseTime,
-    });
-
-    return errorResponse(error.message || 'Internal server error', 500, {
-      ...securityHeaders,
-      'X-Request-ID': requestId,
-    });
+    structuredLog.error('voice', 'request_failed', error, { requestId });
+    return errorResponse(error.message || 'Erro interno', 500, { 'X-Request-ID': requestId });
   }
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { PublishModal } from '../components/PublishModal';
@@ -6,6 +6,73 @@ import { Demand, DemandStatus, ContentType, SocialChannel, WORKFLOW_COLUMNS, SOC
 import { notificationManager, NotificationTrigger } from '../services/zapiService';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
+
+// Componente de ícone das redes sociais usando SVG
+const SocialIcon = ({ channel, size = 20, className = '' }: { channel: string; size?: number; className?: string }) => {
+  const iconMap: Record<string, { icon: React.ReactNode; color: string }> = {
+    instagram: {
+      icon: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>,
+      color: '#E4405F'
+    },
+    facebook: {
+      icon: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>,
+      color: '#1877F2'
+    },
+    tiktok: {
+      icon: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>,
+      color: '#000000'
+    },
+    youtube: {
+      icon: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>,
+      color: '#FF0000'
+    },
+    linkedin: {
+      icon: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>,
+      color: '#0A66C2'
+    },
+    twitter: {
+      icon: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>,
+      color: '#000000'
+    },
+    pinterest: {
+      icon: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.401.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.354-.629-2.758-1.379l-.749 2.848c-.269 1.045-1.004 2.352-1.498 3.146 1.123.345 2.306.535 3.55.535 6.607 0 11.985-5.365 11.985-11.987C23.97 5.39 18.592.026 11.985.026L12.017 0z"/></svg>,
+      color: '#E60023'
+    },
+    threads: {
+      icon: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.03-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.783 3.631 2.698 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.74-1.752-2.96-.065-1.182.408-2.256 1.33-3.022.812-.675 1.89-1.082 3.112-1.18-.004-.074-.006-.148-.008-.222-.01-.606.032-1.2.126-1.783.157-.976.454-1.873.883-2.67.387-.72.889-1.35 1.494-1.872.605-.523 1.315-.936 2.11-1.229a8.099 8.099 0 0 1 2.598-.502c.312-.01.618-.005.918.016 2.89.201 5.069 1.814 5.952 4.378l-1.966.695c-.56-1.63-2.038-3.076-4.236-3.23a5.937 5.937 0 0 0-.672-.012c-.694.024-1.343.138-1.929.337-.588.199-1.11.48-1.552.833a4.584 4.584 0 0 0-1.086 1.357c-.3.556-.522 1.203-.657 1.925a9.87 9.87 0 0 0-.094 1.556l.002.148c.017.351.049.696.097 1.033.086.596.213 1.168.383 1.71.295.94.713 1.772 1.248 2.476 1.168 1.536 2.858 2.425 4.73 2.425h.076c1.878-.048 3.442-.906 4.52-2.481.968-1.414 1.446-3.305 1.382-5.468l2.095.052c.079 2.645-.512 4.964-1.71 6.712-1.35 1.97-3.38 3.075-5.87 3.192l-.143.003z"/></svg>,
+      color: '#000000'
+    },
+    google_business: {
+      icon: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>,
+      color: '#4285F4'
+    },
+  };
+
+  const data = iconMap[channel];
+  if (!data) return <span>?</span>;
+
+  return (
+    <span className={className} style={{ color: data.color }}>
+      {data.icon}
+    </span>
+  );
+};
+
+// Componente de ícone de tipo de conteúdo usando SVG
+const ContentTypeIcon = ({ type, size = 20, className = '' }: { type: string; size?: number; className?: string }) => {
+  const iconMap: Record<string, React.ReactNode> = {
+    post: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5-7l-3 3.72L9 13l-3 4h12l-4-5z"/></svg>,
+    carrossel: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>,
+    reels: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M18 3v2h-2V3H8v2H6V3H4v18h2v-2h2v2h8v-2h2v2h2V3h-2zM8 17H6v-2h2v2zm0-4H6v-2h2v2zm0-4H6V7h2v2zm10 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2z"/></svg>,
+    stories: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6z"/></svg>,
+    video: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>,
+    blog: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>,
+    anuncio: <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M18 11v2h4v-2h-4zm-2 6.61c.96.71 2.21 1.65 3.2 2.39.4-.53.8-1.07 1.2-1.6-.99-.74-2.24-1.68-3.2-2.4-.4.54-.8 1.08-1.2 1.61zM20.4 5.6c-.4-.53-.8-1.07-1.2-1.6-.99.74-2.24 1.68-3.2 2.4.4.53.8 1.07 1.2 1.6.96-.72 2.21-1.65 3.2-2.4zM4 9c-1.1 0-2 .9-2 2v2c0 1.1.9 2 2 2h1v4h2v-4h1l5 3V6L8 9H4zm11.5 3c0-1.33-.58-2.53-1.5-3.35v6.69c.92-.81 1.5-2.01 1.5-3.34z"/></svg>,
+  };
+  const icon = iconMap[type];
+  if (!icon) return <span className={className}>📝</span>;
+  return <span className={className}>{icon}</span>;
+};
 
 type ModalStep = 'content' | 'team';
 
@@ -369,7 +436,7 @@ export const WorkflowPage = () => {
   };
 
   // Constantes de upload
-  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB - aumentado para suportar vídeos
   const MAX_IMAGE_WIDTH = 1200;
   const IMAGE_QUALITY = 0.8;
 
@@ -416,7 +483,7 @@ export const WorkflowPage = () => {
     for (const file of Array.from(files)) {
       // Validar tamanho
       if (file.size > MAX_FILE_SIZE) {
-        toast.error(`${file.name} é muito grande (${Math.round(file.size / 1024 / 1024)}MB). Máximo: 5MB`);
+        toast.error(`${file.name} é muito grande (${Math.round(file.size / 1024 / 1024)}MB). Máximo: 50MB`);
         continue;
       }
 
@@ -666,8 +733,8 @@ export const WorkflowPage = () => {
           {demand.channels.map((ch) => { 
             const channel = SOCIAL_CHANNELS.find((c) => c.id === ch); 
             return channel ? (
-              <span key={ch} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: `${channel.color}20`, color: channel.color }}>
-                {channel.icon}
+              <span key={ch} className="text-xs px-2 py-1 rounded-full flex items-center gap-1" style={{ backgroundColor: `${channel.color}20` }}>
+                <SocialIcon channel={ch} size={14} />
               </span>
             ) : null; 
           })}
@@ -684,8 +751,8 @@ export const WorkflowPage = () => {
         {/* Team */}
         {(redator || designer) && (
           <div className="flex items-center gap-2 mb-3 text-xs text-gray-500">
-            {redator && <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">✍️ {redator.split(' ')[0]}</span>}
-            {designer && <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded">🎨 {designer.split(' ')[0]}</span>}
+            {redator && <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded flex items-center gap-1"><Icons.Pencil size={10} />{redator.split(' ')[0]}</span>}
+            {designer && <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded flex items-center gap-1"><Icons.Palette size={10} />{designer.split(' ')[0]}</span>}
           </div>
         )}
         
@@ -704,18 +771,18 @@ export const WorkflowPage = () => {
           {demand.status === 'rascunho' && (
             <>
               {demand.team_redator_id && (
-                <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'conteudo', 'Enviado para Redator!'); }} className="flex-1 text-xs bg-blue-500/20 text-blue-400 py-1.5 rounded-lg hover:bg-blue-500/30">
-                  ✍️ Redator
+                <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'conteudo', 'Enviado para Redator!'); }} className="flex-1 text-xs bg-blue-500/20 text-blue-400 py-1.5 rounded-lg hover:bg-blue-500/30 flex items-center justify-center gap-1">
+                  <Icons.Pencil size={12} /> Redator
                 </button>
               )}
               {!demand.team_redator_id && demand.team_designer_id && (
-                <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'design', 'Enviado para Designer!'); }} className="flex-1 text-xs bg-purple-500/20 text-purple-400 py-1.5 rounded-lg hover:bg-purple-500/30">
-                  🎨 Designer
+                <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'design', 'Enviado para Designer!'); }} className="flex-1 text-xs bg-purple-500/20 text-purple-400 py-1.5 rounded-lg hover:bg-purple-500/30 flex items-center justify-center gap-1">
+                  <Icons.Palette size={12} /> Designer
                 </button>
               )}
               {!demand.team_redator_id && !demand.team_designer_id && (
-                <button onClick={(e) => { e.stopPropagation(); openEditDemand(demand); }} className="flex-1 text-xs bg-gray-500/20 text-gray-400 py-1.5 rounded-lg hover:bg-gray-500/30">
-                  ⚙️ Configurar
+                <button onClick={(e) => { e.stopPropagation(); openEditDemand(demand); }} className="flex-1 text-xs bg-gray-500/20 text-gray-400 py-1.5 rounded-lg hover:bg-gray-500/30 flex items-center justify-center gap-1">
+                  <Icons.Settings size={12} /> Configurar
                 </button>
               )}
             </>
@@ -723,8 +790,8 @@ export const WorkflowPage = () => {
 
           {/* CONTEÚDO → Enviar para Designer */}
           {demand.status === 'conteudo' && (
-            <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'design', 'Enviado para Designer!'); }} className="flex-1 text-xs bg-purple-500/20 text-purple-400 py-1.5 rounded-lg hover:bg-purple-500/30">
-              🎨 Designer
+            <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'design', 'Enviado para Designer!'); }} className="flex-1 text-xs bg-purple-500/20 text-purple-400 py-1.5 rounded-lg hover:bg-purple-500/30 flex items-center justify-center gap-1">
+              <Icons.Palette size={12} /> Designer
             </button>
           )}
 
@@ -741,9 +808,9 @@ export const WorkflowPage = () => {
                   : 'Enviado para Aprovação Interna!';
                 sendTo(demand.id, nextStatus, msg);
               }}
-              className="flex-1 text-xs bg-yellow-500/20 text-yellow-400 py-1.5 rounded-lg hover:bg-yellow-500/30"
+              className="flex-1 text-xs bg-yellow-500/20 text-yellow-400 py-1.5 rounded-lg hover:bg-yellow-500/30 flex items-center justify-center gap-1"
             >
-              👀 Enviar p/ Aprovação
+              <Icons.Eye size={12} /> Enviar p/ Aprovação
             </button>
           )}
 
@@ -752,7 +819,8 @@ export const WorkflowPage = () => {
             canApproveInternal ? (
               <>
                 <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'ajustes', 'Solicitado ajustes!'); }} className="flex-1 text-xs bg-red-500/20 text-red-400 py-1.5 rounded-lg hover:bg-red-500/30">
-                  🔄 Ajustes
+                  <svg className="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  Ajustes
                 </button>
                 <button
                   onClick={(e) => {
@@ -763,12 +831,14 @@ export const WorkflowPage = () => {
                   }}
                   className="flex-1 text-xs bg-green-500/20 text-green-400 py-1.5 rounded-lg hover:bg-green-500/30"
                 >
-                  ✅ Aprovar
+                  <svg className="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  Aprovar
                 </button>
               </>
             ) : (
               <div className="flex-1 text-xs text-center text-yellow-400 py-1.5">
-                🔒 Aguardando Admin/Gerente
+                <svg className="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                Aguardando Admin/Gerente
               </div>
             )
           )}
@@ -777,10 +847,12 @@ export const WorkflowPage = () => {
           {demand.status === 'aprovacao_cliente' && (
             <>
               <button onClick={(e) => { e.stopPropagation(); setShowApprovalModal(demand.id); }} className="flex-1 text-xs bg-blue-500/20 text-blue-400 py-1.5 rounded-lg hover:bg-blue-500/30">
-                🔗 Link
+                <svg className="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                Link
               </button>
-              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, demand.auto_schedule ? 'aprovado_agendado' : 'aguardando_agendamento', 'Cliente aprovou! ✅'); }} className="flex-1 text-xs bg-green-500/20 text-green-400 py-1.5 rounded-lg hover:bg-green-500/30">
-                ✅ Aprovar
+              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, demand.auto_schedule ? 'aprovado_agendado' : 'aguardando_agendamento', 'Cliente aprovou!'); }} className="flex-1 text-xs bg-green-500/20 text-green-400 py-1.5 rounded-lg hover:bg-green-500/30">
+                <svg className="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                Aprovar
               </button>
             </>
           )}
@@ -788,11 +860,11 @@ export const WorkflowPage = () => {
           {/* AJUSTES → Voltar para Conteúdo ou Design */}
           {demand.status === 'ajustes' && (
             <>
-              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'conteudo', 'Voltou para Redator!'); }} className="flex-1 text-xs bg-blue-500/20 text-blue-400 py-1.5 rounded-lg hover:bg-blue-500/30">
-                ✍️ Redator
+              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'conteudo', 'Voltou para Redator!'); }} className="flex-1 text-xs bg-blue-500/20 text-blue-400 py-1.5 rounded-lg hover:bg-blue-500/30 flex items-center justify-center gap-1">
+                <Icons.Pencil size={12} /> Redator
               </button>
-              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'design', 'Voltou para Designer!'); }} className="flex-1 text-xs bg-purple-500/20 text-purple-400 py-1.5 rounded-lg hover:bg-purple-500/30">
-                🎨 Designer
+              <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'design', 'Voltou para Designer!'); }} className="flex-1 text-xs bg-purple-500/20 text-purple-400 py-1.5 rounded-lg hover:bg-purple-500/30 flex items-center justify-center gap-1">
+                <Icons.Palette size={12} /> Designer
               </button>
             </>
           )}
@@ -800,21 +872,24 @@ export const WorkflowPage = () => {
           {/* AGUARDANDO AGENDAMENTO → Agendar */}
           {demand.status === 'aguardando_agendamento' && (
             <button onClick={(e) => { e.stopPropagation(); sendTo(demand.id, 'aprovado_agendado', 'Agendado!'); }} className="flex-1 text-xs bg-emerald-500/20 text-emerald-400 py-1.5 rounded-lg hover:bg-emerald-500/30">
-              📅 Agendar
+              <svg className="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              Agendar
             </button>
           )}
 
           {/* APROVADO/AGENDADO → Publicar */}
           {demand.status === 'aprovado_agendado' && (
             <button onClick={(e) => { e.stopPropagation(); setShowPublishModal(demand); }} className="flex-1 text-xs bg-green-500/20 text-green-400 py-1.5 rounded-lg hover:bg-green-500/30">
-              🚀 Publicar
+              <svg className="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+              Publicar
             </button>
           )}
 
           {/* CONCLUÍDO → Ver no histórico */}
           {demand.status === 'concluido' && (
             <button onClick={(e) => { e.stopPropagation(); setShowPreviewModal(demand); }} className="flex-1 text-xs bg-gray-500/20 text-gray-400 py-1.5 rounded-lg hover:bg-gray-500/30">
-              📋 Ver Detalhes
+              <svg className="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+              Ver Detalhes
             </button>
           )}
         </div>
@@ -828,7 +903,7 @@ export const WorkflowPage = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 md:mb-6 gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2 md:gap-3">
-            <span className="text-2xl md:text-3xl">📋</span> Workflow
+            <Icons.Workflow className="w-6 h-6 md:w-7 md:h-7 text-orange-500" /> Workflow
           </h1>
           <p className="text-gray-400 text-xs md:text-sm mt-1 hidden md:block">Gerencie demandas de conteúdo</p>
         </div>
@@ -836,15 +911,15 @@ export const WorkflowPage = () => {
           <div className="flex bg-gray-800 rounded-lg p-1">
             <button 
               onClick={() => setViewMode('kanban')} 
-              className={clsx('px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm transition', viewMode === 'kanban' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}
+              className={clsx('px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm transition flex items-center gap-1', viewMode === 'kanban' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}
             >
-              📊 <span className="hidden sm:inline">Kanban</span>
+              <Icons.LayoutGrid size={14} /> <span className="hidden sm:inline">Kanban</span>
             </button>
             <button 
               onClick={() => setViewMode('list')} 
-              className={clsx('px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm transition', viewMode === 'list' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}
+              className={clsx('px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm transition flex items-center gap-1', viewMode === 'list' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white')}
             >
-              📋 <span className="hidden sm:inline">Lista</span>
+              <Icons.List size={14} /> <span className="hidden sm:inline">Lista</span>
             </button>
           </div>
           <button 
@@ -949,8 +1024,7 @@ export const WorkflowPage = () => {
                     <td className="p-4">
                       <div className="flex gap-1">
                         {demand.channels.slice(0, 3).map((ch) => {
-                          const channel = SOCIAL_CHANNELS.find((c) => c.id === ch);
-                          return channel ? <span key={ch} className="text-sm">{channel.icon}</span> : null;
+                          return <span key={ch} className="text-sm"><SocialIcon channel={ch} size={16} /></span>;
                         })}
                         {demand.channels.length > 3 && <span className="text-xs text-gray-500">+{demand.channels.length - 3}</span>}
                       </div>
@@ -960,8 +1034,8 @@ export const WorkflowPage = () => {
                     </td>
                     <td className="p-4">
                       <div className="flex -space-x-2">
-                        {demand.team_redator_name && <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-xs text-white" title={demand.team_redator_name}>✍️</div>}
-                        {demand.team_designer_name && <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-xs text-white" title={demand.team_designer_name}>🎨</div>}
+                        {demand.team_redator_name && <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-xs text-white" title={demand.team_redator_name}><Icons.Pencil size={12} /></div>}
+                        {demand.team_designer_name && <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-xs text-white" title={demand.team_designer_name}><Icons.Palette size={12} /></div>}
                       </div>
                     </td>
                     <td className="p-4 text-right">
@@ -1035,7 +1109,7 @@ export const WorkflowPage = () => {
             <div className="p-6 border-b border-gray-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center">
-                  <span className="text-white text-xl">📝</span>
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-white">
@@ -1132,7 +1206,7 @@ export const WorkflowPage = () => {
                           )}
                           title={ch.label}
                         >
-                          {ch.icon}
+                          <SocialIcon channel={ch.id} size={20} />
                         </button>
                       ))}
                     </div>
@@ -1374,7 +1448,7 @@ export const WorkflowPage = () => {
                                       : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                                   )}
                                 >
-                                  ✍️ Redator
+                                  <Icons.Pencil size={12} className="inline mr-1" />Redator
                                 </button>
                                 <button
                                   type="button"
@@ -1390,7 +1464,7 @@ export const WorkflowPage = () => {
                                       : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                                   )}
                                 >
-                                  🎨 Designer
+                                  <Icons.Palette size={12} className="inline mr-1" />Designer
                                 </button>
                               </div>
                             </div>
@@ -1404,7 +1478,7 @@ export const WorkflowPage = () => {
                       <div className="text-sm text-gray-400 mb-2">Resumo da equipe:</div>
                       <div className="flex gap-4">
                         <div className="flex items-center gap-2">
-                          <span className="text-blue-400">✍️</span>
+                          <Icons.Pencil size={14} className="text-blue-400" />
                           <span className="text-white text-sm">
                             {teamForm.team_redator_id
                               ? teamMembers.find(m => m.id === teamForm.team_redator_id)?.name
@@ -1412,7 +1486,7 @@ export const WorkflowPage = () => {
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-purple-400">🎨</span>
+                          <Icons.Palette size={14} className="text-purple-400" />
                           <span className="text-white text-sm">
                             {teamForm.team_designer_id
                               ? teamMembers.find(m => m.id === teamForm.team_designer_id)?.name
@@ -1426,7 +1500,7 @@ export const WorkflowPage = () => {
                   {/* Info sobre fluxo de aprovação */}
                   <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
                     <div className="flex items-start gap-3">
-                      <span className="text-blue-400 text-xl">ℹ️</span>
+                      <Icons.Info size={20} className="text-blue-400 flex-shrink-0" />
                       <div>
                         <h4 className="text-blue-400 font-medium mb-1">Fluxo de aprovação</h4>
                         <p className="text-sm text-gray-400">
@@ -1553,7 +1627,7 @@ export const WorkflowPage = () => {
                     onClick={() => copyApprovalLink(demand)}
                     className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-xl text-sm transition font-medium"
                   >
-                    📋 Copiar link
+                    <Icons.Copy size={16} /> Copiar link
                   </button>
                   <button
                     onClick={() => sendWhatsApp(demand)}
@@ -1656,7 +1730,7 @@ export const WorkflowPage = () => {
                     const channel = SOCIAL_CHANNELS.find((c) => c.id === ch);
                     return channel ? (
                       <div key={ch} className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
-                        <span>{channel.icon}</span>
+                        <SocialIcon channel={ch} size={16} />
                         <span className="text-sm text-white">{channel.label}</span>
                       </div>
                     ) : null;
@@ -1769,9 +1843,9 @@ export const WorkflowPage = () => {
                     </button>
                     <button
                       onClick={() => { sendTo(demand.id, 'design', 'Enviado para Designer!'); setShowPreviewModal(null); }}
-                      className="w-full py-3 bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30 rounded-xl transition font-medium"
+                      className="w-full py-3 bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30 rounded-xl transition font-medium flex items-center justify-center gap-2"
                     >
-                      Enviar para Designer 🎨
+                      Enviar para Designer <Icons.Palette size={16} />
                     </button>
                   </>
                 )}
@@ -1796,9 +1870,9 @@ export const WorkflowPage = () => {
                         sendTo(demand.id, nextStatus, msg);
                         setShowPreviewModal(null);
                       }}
-                      className="w-full py-3 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/30 rounded-xl transition font-medium"
+                      className="w-full py-3 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/30 rounded-xl transition font-medium flex items-center justify-center gap-2"
                     >
-                      Enviar para Aprovação 👀
+                      Enviar para Aprovação <Icons.Eye size={16} />
                     </button>
                   </>
                 )}
@@ -1864,15 +1938,15 @@ export const WorkflowPage = () => {
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => { sendTo(demand.id, 'conteudo', 'Voltou para Redator!'); setShowPreviewModal(null); }}
-                        className="py-3 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-xl transition font-medium text-sm"
+                        className="py-3 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-xl transition font-medium text-sm flex items-center justify-center gap-1"
                       >
-                        ✍️ Redator
+                        <Icons.Pencil size={14} /> Redator
                       </button>
                       <button
                         onClick={() => { sendTo(demand.id, 'design', 'Voltou para Designer!'); setShowPreviewModal(null); }}
-                        className="py-3 bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30 rounded-xl transition font-medium text-sm"
+                        className="py-3 bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30 rounded-xl transition font-medium text-sm flex items-center justify-center gap-1"
                       >
-                        🎨 Designer
+                        <Icons.Palette size={14} /> Designer
                       </button>
                     </div>
                   </>

@@ -2,6 +2,7 @@
 // Suporta: FAL.ai (Kling, MiniMax, Luma, SVD)
 // Runtime: Serverless (requer polling longo para alguns modelos)
 // Features: Retry, Circuit Breaker, Validation, Structured Logging
+// FALLBACK: Aceita API key via header X-API-Key ou body.apiKey
 
 import {
   fetchWithRetry,
@@ -34,32 +35,49 @@ const FALAI_VIDEO_MODELS: Record<string, string> = {
 interface VideoRequest {
   provider: 'falai';
   model: string;
-  image: string; // URL or base64
+  image: string;
   prompt?: string;
   duration?: string;
+  apiKey?: string; // Fallback API key
 }
 
 // Validate request
 function validateRequest(body: any): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
-
   errors.push(...validate.required(body.provider, 'provider'));
   errors.push(...validate.required(body.image, 'image'));
   errors.push(...validate.enum(body.provider, 'provider', ['falai']));
-
-  // Validate image is base64 or URL
   if (body.image && !body.image.startsWith('data:') && !body.image.startsWith('http')) {
     errors.push(...validate.base64(body.image, 'image'));
   }
-
   return { valid: errors.length === 0, errors };
+}
+
+// Get API key with fallback chain
+function getApiKey(req: Request, body: VideoRequest): string {
+  // 1. Env var (production)
+  if (process.env.FALAI_API_KEY) {
+    console.log('[API Key] Usando env var FALAI_API_KEY');
+    return process.env.FALAI_API_KEY;
+  }
+  // 2. Header
+  const headerKey = req.headers.get('X-API-Key');
+  if (headerKey) {
+    console.log('[API Key] Usando header X-API-Key');
+    return headerKey;
+  }
+  // 3. Body
+  if (body.apiKey) {
+    console.log('[API Key] Usando body.apiKey');
+    return body.apiKey;
+  }
+  return '';
 }
 
 export default async function handler(req: Request): Promise<Response> {
   const requestId = generateRequestId();
   const startTime = Date.now();
 
-  // CORS
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
@@ -71,14 +89,12 @@ export default async function handler(req: Request): Promise<Response> {
     const body: VideoRequest = await req.json();
     const { provider, model, image, prompt = 'Smooth natural motion, cinematic', duration = '5' } = body;
 
-    // Validate
     const validation = validateRequest(body);
     if (!validation.valid) {
       structuredLog.warn('video', 'validation_failed', { errors: validation.errors, requestId });
       return errorResponse(validation.errors.join(', '), 400);
     }
 
-    // Rate limit - mais restritivo para video
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
     const rateLimit = edgeRateLimit.check(`video:${ip}`, 10, 60000);
 
@@ -87,15 +103,14 @@ export default async function handler(req: Request): Promise<Response> {
       return errorResponse('Rate limit exceeded. Videos: 10/min', 429, edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 10));
     }
 
-    // Check circuit breaker
     if (circuitBreaker.isOpen(provider)) {
       structuredLog.warn('video', 'circuit_open', { provider, requestId });
       return errorResponse(`${provider} temporariamente indisponível. Tente novamente em 1 minuto.`, 503);
     }
 
-    const apiKey = process.env.FALAI_API_KEY || '';
+    const apiKey = getApiKey(req, body);
     if (!apiKey) {
-      return errorResponse('FAL.ai API key não configurada no servidor', 500);
+      return errorResponse('FAL.ai API key não configurada. Configure nas variáveis de ambiente do Vercel ou nas configurações.', 500);
     }
 
     let videoUrl = '';
@@ -103,32 +118,15 @@ export default async function handler(req: Request): Promise<Response> {
     structuredLog.info('video', 'request_start', { provider, model, requestId });
 
     try {
-      // Get FAL.ai model endpoint
       const falModel = FALAI_VIDEO_MODELS[model] || FALAI_VIDEO_MODELS['fast-svd'];
-
-      // Build request body based on model type
       let requestBody: Record<string, any>;
 
       if (falModel.includes('kling')) {
-        requestBody = {
-          image_url: image,
-          prompt,
-          duration,
-          aspect_ratio: '16:9',
-        };
+        requestBody = { image_url: image, prompt, duration, aspect_ratio: '16:9' };
       } else if (falModel.includes('minimax') || falModel.includes('luma')) {
-        requestBody = {
-          image_url: image,
-          prompt,
-        };
+        requestBody = { image_url: image, prompt };
       } else {
-        // SVD and other models
-        requestBody = {
-          image_url: image,
-          motion_bucket_id: 127,
-          fps: 7,
-          cond_aug: 0.02,
-        };
+        requestBody = { image_url: image, motion_bucket_id: 127, fps: 7, cond_aug: 0.02 };
       }
 
       structuredLog.info('video', 'falai_request', { model: falModel, requestId });
@@ -154,7 +152,6 @@ export default async function handler(req: Request): Promise<Response> {
       const falData = await falRes.json();
       videoUrl = falData.video?.url || falData.video_url || falData.output?.video || '';
 
-      // Record success
       circuitBreaker.recordSuccess(provider);
 
     } catch (providerError: any) {
@@ -168,19 +165,10 @@ export default async function handler(req: Request): Promise<Response> {
 
     const responseTime = Date.now() - startTime;
 
-    structuredLog.request('video', 'request_complete', startTime, true, {
-      provider,
-      model,
-      requestId,
-    });
+    structuredLog.request('video', 'request_complete', startTime, true, { provider, model, requestId });
 
     return successResponse(
-      {
-        videoUrl,
-        provider,
-        model,
-        responseTimeMs: responseTime,
-      },
+      { videoUrl, provider, model, responseTimeMs: responseTime },
       {
         ...edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 10),
         ...securityHeaders,
@@ -191,26 +179,13 @@ export default async function handler(req: Request): Promise<Response> {
 
   } catch (error: any) {
     const responseTime = Date.now() - startTime;
+    structuredLog.error('video', 'request_failed', error, { requestId, duration: responseTime });
 
-    structuredLog.error('video', 'request_failed', error, {
-      requestId,
-      duration: responseTime,
-    });
-
-    // User-friendly error messages
     let message = error.message || 'Erro interno do servidor';
+    if (message.includes('Failed to fetch')) message = 'Erro de conexão. Verifique sua internet.';
+    else if (message.includes('401') || message.includes('Unauthorized')) message = 'API Key inválida.';
+    else if (message.includes('429')) message = 'Limite de requisições excedido. Aguarde alguns minutos.';
 
-    if (message.includes('Failed to fetch')) {
-      message = 'Erro de conexão. Verifique sua internet.';
-    } else if (message.includes('401') || message.includes('Unauthorized')) {
-      message = 'API Key inválida.';
-    } else if (message.includes('429')) {
-      message = 'Limite de requisições excedido. Aguarde alguns minutos.';
-    }
-
-    return errorResponse(message, 500, {
-      ...securityHeaders,
-      'X-Request-ID': requestId,
-    });
+    return errorResponse(message, 500, { ...securityHeaders, 'X-Request-ID': requestId });
   }
 }

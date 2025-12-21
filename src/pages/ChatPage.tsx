@@ -2,10 +2,43 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { DemandStatus, ContentType, SocialChannel, Conversation, ChatProject } from '../types';
-import { sendMessageToGemini } from '../services/geminiService';
-import { openrouterService } from '../services/openrouterService';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
+
+// Helper para chamar Edge Function de chat (seguro, escalável)
+async function callChatAPI(
+  provider: 'gemini' | 'openrouter' | 'openai',
+  message: string,
+  systemPrompt: string,
+  history: { role: string; content: string }[],
+  model?: string,
+  temperature?: number,
+  apiKey?: string
+): Promise<string> {
+  const response = await fetch('/api/ai/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey || '',
+    },
+    body: JSON.stringify({
+      provider,
+      message,
+      systemPrompt,
+      history,
+      model,
+      temperature,
+    }),
+  });
+
+  const result = await response.json();
+  
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || 'Erro ao processar mensagem');
+  }
+  
+  return result.data?.response || '';
+}
 
 interface ParsedDemand {
   title: string;
@@ -402,18 +435,18 @@ Responda APENAS com um JSON válido no formato:
       let response = '';
       const provider = sofiaAgent.provider || 'gemini';
 
-      if (provider === 'openrouter' && apiConfig.openrouter_key) {
-        openrouterService.setApiKey(apiConfig.openrouter_key);
-        response = await openrouterService.chat(
-          sofiaAgent.model || 'google/gemma-2-9b-it:free',
-          [{ role: 'system', content: systemPrompt }, { role: 'user', content }],
-          { temperature: 0.3 }
-        );
-      } else if (apiConfig.gemini_key) {
-        response = await sendMessageToGemini(content, systemPrompt, apiConfig.gemini_key);
-      } else {
-        throw new Error('Configure uma API Key nas configurações');
-      }
+      // Chamar Edge Function - seguro, escalável
+      response = await callChatAPI(
+        provider as 'gemini' | 'openrouter' | 'openai',
+        content,
+        systemPrompt,
+        [],
+        sofiaAgent.model,
+        0.3,
+        provider === 'openrouter' ? apiConfig.openrouter_key :
+        provider === 'openai' ? apiConfig.openai_key :
+        apiConfig.gemini_key
+      );
 
       // Parse response
       try {
@@ -548,38 +581,18 @@ Responda APENAS com um JSON válido no formato:
           contextMessage = `[O usuário enviou ${attachments.length} anexo(s): ${attachments.map(a => `${a.type}: ${a.name}`).join(', ')}]\n\n${userMessage}`;
         }
 
-        if (provider === 'openrouter' && apiConfig.openrouter_key) {
-          openrouterService.setApiKey(apiConfig.openrouter_key);
-          response = await openrouterService.chat(
-            agent.model || 'google/gemma-2-9b-it:free',
-            [
-              { role: 'system', content: agent.system_prompt },
-              ...currentMessages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-              { role: 'user', content: contextMessage },
-            ],
-            { temperature: agent.temperature || 0.7 }
-          );
-        } else if (provider === 'openai' && apiConfig.openai_key) {
-          const res = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${apiConfig.openai_key}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: agent.model || 'gpt-4o-mini',
-              messages: [
-                { role: 'system', content: agent.system_prompt },
-                ...currentMessages.map((m) => ({ role: m.role, content: m.content })),
-                { role: 'user', content: contextMessage },
-              ],
-              temperature: agent.temperature || 0.7,
-            }),
-          });
-          const data = await res.json();
-          response = data.choices?.[0]?.message?.content || 'Sem resposta';
-        } else if (apiConfig.gemini_key) {
-          response = await sendMessageToGemini(contextMessage, agent.system_prompt, apiConfig.gemini_key);
-        } else {
-          throw new Error('Configure uma API Key nas configurações');
-        }
+        // Chamar Edge Function - seguro, escalável
+        response = await callChatAPI(
+          provider as 'gemini' | 'openrouter' | 'openai',
+          contextMessage,
+          agent.system_prompt,
+          currentMessages.map((m) => ({ role: m.role, content: m.content })),
+          agent.model,
+          agent.temperature || 0.7,
+          provider === 'openrouter' ? apiConfig.openrouter_key :
+          provider === 'openai' ? apiConfig.openai_key :
+          apiConfig.gemini_key
+        );
 
         addMessage({
           conversation_id: currentConversationId,

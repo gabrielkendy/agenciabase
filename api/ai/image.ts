@@ -2,6 +2,7 @@
 // Suporta: FAL.ai (Flux, SDXL, Ideogram, Recraft), OpenAI (DALL-E), Google (Imagen 3)
 // Runtime: Edge com features de resiliência
 // Features: Retry, Circuit Breaker, Validation, Structured Logging
+// FALLBACK: Aceita API key via header X-API-Key ou body.apiKey
 
 import {
   fetchWithRetry,
@@ -28,6 +29,7 @@ const FALAI_MODELS: Record<string, string> = {
   'flux-pro': 'fal-ai/flux-pro/v1.1',
   'flux-realism': 'fal-ai/flux-realism',
   'sdxl': 'fal-ai/fast-sdxl',
+  'stable-diffusion-xl': 'fal-ai/fast-sdxl',
   'ideogram': 'fal-ai/ideogram/v2',
   'recraft': 'fal-ai/recraft-v3',
 };
@@ -40,6 +42,7 @@ interface ImageRequest {
   numImages?: number;
   size?: string;
   quality?: string;
+  apiKey?: string; // Fallback API key from frontend
 }
 
 // Validate request
@@ -56,6 +59,37 @@ function validateRequest(body: any): { valid: boolean; errors: string[] } {
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+// Get API key with fallback chain: env -> header -> body
+function getApiKey(provider: string, req: Request, body: ImageRequest): string {
+  // 1. Primeiro: Variáveis de ambiente (produção Vercel)
+  const envKeys: Record<string, string | undefined> = {
+    falai: process.env.FALAI_API_KEY,
+    openai: process.env.OPENAI_API_KEY,
+    google: process.env.GEMINI_API_KEY,
+  };
+  
+  if (envKeys[provider]) {
+    console.log(`[API Key] Usando env var para ${provider}`);
+    return envKeys[provider]!;
+  }
+  
+  // 2. Fallback: Header X-API-Key
+  const headerKey = req.headers.get('X-API-Key');
+  if (headerKey) {
+    console.log(`[API Key] Usando header X-API-Key para ${provider}`);
+    return headerKey;
+  }
+  
+  // 3. Fallback: Body apiKey
+  if (body.apiKey) {
+    console.log(`[API Key] Usando body.apiKey para ${provider}`);
+    return body.apiKey;
+  }
+  
+  console.log(`[API Key] Nenhuma key encontrada para ${provider}`);
+  return '';
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -96,16 +130,14 @@ export default async function handler(req: Request): Promise<Response> {
       return errorResponse(`${provider} temporariamente indisponível. Tente novamente em 1 minuto.`, 503);
     }
 
-    // Get API keys from environment
-    const apiKeys: Record<string, string> = {
-      falai: process.env.FALAI_API_KEY || '',
-      openai: process.env.OPENAI_API_KEY || '',
-      google: process.env.GEMINI_API_KEY || '',
-    };
-
-    const apiKey = apiKeys[provider];
+    // Get API key with fallback chain
+    const apiKey = getApiKey(provider, req, body);
+    
     if (!apiKey) {
-      return errorResponse(`${provider} API key não configurada no servidor`, 500);
+      return errorResponse(
+        `API Key do ${provider} não configurada. Configure nas variáveis de ambiente do Vercel ou nas configurações do sistema.`,
+        500
+      );
     }
 
     let images: string[] = [];
@@ -220,7 +252,6 @@ export default async function handler(req: Request): Promise<Response> {
 
       // ============ GOOGLE GEMINI 2.0 (Imagen) ============
       else if (provider === 'google') {
-        // Usar Gemini 2.0 Flash experimental com geração de imagem
         const geminiRes = await fetchWithRetry(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
           {
@@ -246,7 +277,6 @@ export default async function handler(req: Request): Promise<Response> {
           const error = await geminiRes.json().catch(() => ({}));
           const errorMsg = error.error?.message || `Google Gemini error ${geminiRes.status}`;
 
-          // Fallback message for image generation not available
           if (errorMsg.includes('not found') || errorMsg.includes('not supported')) {
             throw new Error('Google Imagen não disponível. Use FAL.ai Flux ou OpenAI DALL-E.');
           }
@@ -255,7 +285,6 @@ export default async function handler(req: Request): Promise<Response> {
 
         const geminiData = await geminiRes.json();
 
-        // Extract images from response
         if (geminiData.candidates?.[0]?.content?.parts) {
           for (const part of geminiData.candidates[0].content.parts) {
             if (part.inlineData?.mimeType?.startsWith('image/')) {
@@ -264,13 +293,11 @@ export default async function handler(req: Request): Promise<Response> {
           }
         }
 
-        // If no images, throw helpful error
         if (images.length === 0) {
           throw new Error('Google Gemini não gerou imagem. Use FAL.ai Flux (recomendado) ou OpenAI DALL-E.');
         }
       }
 
-      // Record success
       circuitBreaker.recordSuccess(provider);
 
     } catch (providerError: any) {
@@ -311,13 +338,12 @@ export default async function handler(req: Request): Promise<Response> {
       duration: responseTime,
     });
 
-    // User-friendly error messages
     let message = error.message || 'Erro interno do servidor';
 
     if (message.includes('Failed to fetch')) {
       message = 'Erro de conexão. Verifique sua internet.';
     } else if (message.includes('401') || message.includes('Unauthorized')) {
-      message = 'API Key inválida.';
+      message = 'API Key inválida. Verifique sua configuração.';
     } else if (message.includes('429')) {
       message = 'Limite de requisições excedido. Aguarde alguns minutos.';
     } else if (message.includes('403')) {

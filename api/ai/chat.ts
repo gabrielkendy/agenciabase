@@ -2,6 +2,7 @@
 // Suporta: Gemini, OpenRouter, OpenAI
 // Runtime: Edge (baixa latencia)
 // Features: Retry, Circuit Breaker, Validation, Structured Logging
+// FALLBACK: Aceita API key via header X-API-Key ou body.apiKey
 
 import {
   fetchWithRetry,
@@ -18,7 +19,7 @@ import {
 
 export const config = {
   runtime: 'edge',
-  regions: ['gru1', 'iad1', 'sfo1', 'fra1'], // Brasil, EUA Leste/Oeste, Europa
+  regions: ['gru1', 'iad1', 'sfo1', 'fra1'],
 };
 
 interface ChatRequest {
@@ -29,38 +30,55 @@ interface ChatRequest {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  apiKey?: string; // Fallback API key
 }
 
-// Token estimation
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-// Validate request
 function validateRequest(body: any): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
-
   errors.push(...validate.required(body.provider, 'provider'));
   errors.push(...validate.required(body.message, 'message'));
   errors.push(...validate.enum(body.provider, 'provider', ['gemini', 'openrouter', 'openai']));
   errors.push(...validate.string(body.message, 'message', { minLength: 1, maxLength: 50000 }));
-
   if (body.temperature !== undefined) {
     errors.push(...validate.number(body.temperature, 'temperature', { min: 0, max: 2 }));
   }
-
   if (body.maxTokens !== undefined) {
     errors.push(...validate.number(body.maxTokens, 'maxTokens', { min: 1, max: 128000 }));
   }
-
   return { valid: errors.length === 0, errors };
+}
+
+// Get API key with fallback chain
+function getApiKey(provider: string, req: Request, body: ChatRequest): string {
+  const envKeys: Record<string, string | undefined> = {
+    gemini: process.env.GEMINI_API_KEY,
+    openrouter: process.env.OPENROUTER_API_KEY,
+    openai: process.env.OPENAI_API_KEY,
+  };
+  if (envKeys[provider]) {
+    console.log(`[API Key] Usando env var para ${provider}`);
+    return envKeys[provider]!;
+  }
+  const headerKey = req.headers.get('X-API-Key');
+  if (headerKey) {
+    console.log(`[API Key] Usando header X-API-Key`);
+    return headerKey;
+  }
+  if (body.apiKey) {
+    console.log(`[API Key] Usando body.apiKey`);
+    return body.apiKey;
+  }
+  return '';
 }
 
 export default async function handler(req: Request): Promise<Response> {
   const requestId = generateRequestId();
   const startTime = Date.now();
 
-  // CORS preflight
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
@@ -69,18 +87,15 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    // Parse request
     const body: ChatRequest = await req.json();
     const { provider, message, systemPrompt, history, model, temperature = 0.7, maxTokens = 4096 } = body;
 
-    // Validate
     const validation = validateRequest(body);
     if (!validation.valid) {
       structuredLog.warn('chat', 'validation_failed', { errors: validation.errors, requestId });
       return errorResponse(validation.errors.join(', '), 400);
     }
 
-    // Rate limit por IP
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
     const rateLimit = edgeRateLimit.check(`chat:${ip}`, 60, 60000);
 
@@ -89,22 +104,14 @@ export default async function handler(req: Request): Promise<Response> {
       return errorResponse('Rate limit exceeded. Wait 1 minute.', 429, edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 60));
     }
 
-    // Check circuit breaker
     if (circuitBreaker.isOpen(provider)) {
       structuredLog.warn('chat', 'circuit_open', { provider, requestId });
       return errorResponse(`${provider} temporarily unavailable. Try again later.`, 503);
     }
 
-    // API Keys
-    const apiKeys: Record<string, string> = {
-      gemini: process.env.GEMINI_API_KEY || '',
-      openrouter: process.env.OPENROUTER_API_KEY || '',
-      openai: process.env.OPENAI_API_KEY || '',
-    };
-
-    const apiKey = apiKeys[provider];
+    const apiKey = getApiKey(provider, req, body);
     if (!apiKey) {
-      return errorResponse(`${provider} API key not configured`, 500);
+      return errorResponse(`${provider} API key não configurada. Configure nas variáveis de ambiente do Vercel ou nas configurações.`, 500);
     }
 
     let response: string = '';
@@ -171,12 +178,7 @@ export default async function handler(req: Request): Promise<Response> {
                 'HTTP-Referer': 'https://agenciabase.tech',
                 'X-Title': 'AgenciaBase',
               },
-              body: JSON.stringify({
-                model: orModel,
-                messages,
-                temperature,
-                max_tokens: maxTokens,
-              }),
+              body: JSON.stringify({ model: orModel, messages, temperature, max_tokens: maxTokens }),
             },
             { maxRetries: 2, baseDelayMs: 500 }
           );
@@ -209,12 +211,7 @@ export default async function handler(req: Request): Promise<Response> {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
-                model: oaiModel,
-                messages,
-                temperature,
-                max_tokens: maxTokens,
-              }),
+              body: JSON.stringify({ model: oaiModel, messages, temperature, max_tokens: maxTokens }),
             },
             { maxRetries: 2, baseDelayMs: 500 }
           );
@@ -233,11 +230,9 @@ export default async function handler(req: Request): Promise<Response> {
           return errorResponse('Invalid provider', 400);
       }
 
-      // Record success
       circuitBreaker.recordSuccess(provider);
 
     } catch (providerError: any) {
-      // Record failure for circuit breaker
       circuitBreaker.recordFailure(provider);
       throw providerError;
     }
@@ -247,11 +242,7 @@ export default async function handler(req: Request): Promise<Response> {
     const outputTokens = estimateTokens(response);
 
     structuredLog.request('chat', 'request_complete', startTime, true, {
-      provider,
-      model: actualModel,
-      inputTokens,
-      outputTokens,
-      requestId,
+      provider, model: actualModel, inputTokens, outputTokens, requestId,
     });
 
     return successResponse(
@@ -259,12 +250,7 @@ export default async function handler(req: Request): Promise<Response> {
         response,
         provider,
         model: actualModel,
-        usage: {
-          inputTokens,
-          outputTokens,
-          totalTokens: inputTokens + outputTokens,
-          responseTimeMs: responseTime,
-        },
+        usage: { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens, responseTimeMs: responseTime },
       },
       {
         ...edgeRateLimit.headers(rateLimit.remaining, rateLimit.resetIn, 60),
@@ -276,12 +262,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   } catch (error: any) {
     const responseTime = Date.now() - startTime;
-
-    structuredLog.error('chat', 'request_failed', error, {
-      requestId,
-      duration: responseTime,
-    });
-
+    structuredLog.error('chat', 'request_failed', error, { requestId, duration: responseTime });
     return errorResponse(error.message || 'Internal server error', 500, {
       ...securityHeaders,
       'X-Request-ID': requestId,
