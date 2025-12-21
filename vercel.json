@@ -1,12 +1,13 @@
 {
   "version": 2,
+  "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "regions": ["gru1"],
   "functions": {
     "api/**/*.ts": {
-      "maxDuration": 30
+      "runtime": "@vercel/node@3.0.0"
     }
   },
   "routes": [
@@ -19,7 +20,19 @@
         "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key"
       }
     },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    {
+      "src": "/assets/(.*)",
+      "dest": "/assets/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
   ]
 }
