@@ -1,23 +1,23 @@
 // API Route: Health Check
-// Test endpoint to verify API is working
-
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   
-  return res.status(200).json({ 
-    success: true, 
-    message: 'API funcionando!',
+  const envStatus = {
+    GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+    OPENROUTER_API_KEY: !!process.env.OPENROUTER_API_KEY,
+    OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+    FALAI_API_KEY: !!process.env.FALAI_API_KEY,
+    ELEVENLABS_API_KEY: !!process.env.ELEVENLABS_API_KEY,
+    FREEPIK_API_KEY: !!process.env.FREEPIK_API_KEY,
+    LATE_API_KEY: !!process.env.LATE_API_KEY,
+  };
+
+  return res.status(200).json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
-    env: {
-      hasGemini: !!process.env.GEMINI_API_KEY,
-      hasOpenRouter: !!process.env.OPENROUTER_API_KEY,
-      hasOpenAI: !!process.env.OPENAI_API_KEY,
-      hasFalAI: !!process.env.FALAI_API_KEY,
-      hasElevenLabs: !!process.env.ELEVENLABS_API_KEY,
-      hasFreepik: !!process.env.FREEPIK_API_KEY,
-      hasLate: !!process.env.LATE_API_KEY,
-    }
+    env: envStatus,
+    allConfigured: Object.values(envStatus).every(v => v),
   });
 }
