@@ -1,13 +1,13 @@
 {
   "version": 2,
-  "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "regions": ["gru1"],
   "functions": {
     "api/**/*.ts": {
-      "runtime": "@vercel/node"
+      "memory": 1024,
+      "maxDuration": 30
     }
   },
   "headers": [
