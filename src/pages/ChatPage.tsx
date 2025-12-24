@@ -5,21 +5,19 @@ import { DemandStatus, ContentType, SocialChannel, Conversation, ChatProject } f
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 
-// Helper para chamar Edge Function de chat (seguro, escalável)
+// Helper para chamar Backend API de chat (seguro, escalável)
 async function callChatAPI(
   provider: 'gemini' | 'openrouter' | 'openai',
   message: string,
   systemPrompt: string,
   history: { role: string; content: string }[],
   model?: string,
-  temperature?: number,
-  apiKey?: string
+  temperature?: number
 ): Promise<string> {
   const response = await fetch('/api/ai/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': apiKey || '',
     },
     body: JSON.stringify({
       provider,
@@ -435,17 +433,14 @@ Responda APENAS com um JSON válido no formato:
       let response = '';
       const provider = sofiaAgent.provider || 'gemini';
 
-      // Chamar Edge Function - seguro, escalável
+      // Chamar Backend API - seguro, escalável
       response = await callChatAPI(
         provider as 'gemini' | 'openrouter' | 'openai',
         content,
         systemPrompt,
         [],
         sofiaAgent.model,
-        0.3,
-        provider === 'openrouter' ? apiConfig.openrouter_key :
-        provider === 'openai' ? apiConfig.openai_key :
-        apiConfig.gemini_key
+        0.3
       );
 
       // Parse response

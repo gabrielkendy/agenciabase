@@ -261,14 +261,11 @@ export const CreatorStudioPage = () => {
       console.log(`[Edge Function] Gerando imagem via /api/ai/image`);
       console.log(`[Edge Function] Provider: ${model.provider}, Model: ${model.id}`);
 
-      // Chamar Edge Function - com fallback API key do store
+      // Chamar Backend API - keys seguras no servidor
       const response = await fetch('/api/ai/image', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': model.provider === 'falai' ? (apiConfig.falai_key || '') : 
-                       model.provider === 'openai' ? (apiConfig.openai_key || '') :
-                       model.provider === 'google' ? (apiConfig.gemini_key || '') : '',
         },
         body: JSON.stringify({
           provider: model.provider,
@@ -351,12 +348,11 @@ export const CreatorStudioPage = () => {
       console.log(`[Edge Function] Gerando video via /api/ai/video`);
       console.log(`[Edge Function] Model: ${model.id}`);
 
-      // Chamar Edge Function - com fallback API key do store
+      // Chamar Backend API - keys seguras no servidor
       const response = await fetch('/api/ai/video', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': apiConfig.falai_key || '',
         },
         body: JSON.stringify({
           provider: 'falai',
@@ -417,12 +413,11 @@ export const CreatorStudioPage = () => {
     try {
       console.log(`[Edge Function] Gerando audio via /api/ai/voice`);
       
-      // Chamar Edge Function - com fallback API key do store
+      // Chamar Backend API - keys seguras no servidor
       const response = await fetch('/api/ai/voice', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': apiConfig.elevenlabs_key || '',
         },
         body: JSON.stringify({
           text: audioText,
@@ -494,12 +489,11 @@ export const CreatorStudioPage = () => {
         options.styleImage = styleRef.url;
       }
 
-      // Chamar Edge Function - com fallback API key do store
+      // Chamar Backend API - keys seguras no servidor
       const response = await fetch('/api/ai/tools', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': apiConfig.freepik_key || '',
         },
         body: JSON.stringify({
           tool: selectedTool,

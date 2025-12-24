@@ -1,12 +1,36 @@
+# =============================================================================
+# RENDER CONFIGURATION
+# =============================================================================
+# Deploy: Backend Node/Express + Frontend React
+# URL: https://agenciabase.tech
+# =============================================================================
+
 services:
   - type: web
-    name: agenciabase
+    name: base-agency-saas
     runtime: node
-    plan: free
     region: oregon
-    buildCommand: npm install --include=dev && npm run build
-    startCommand: node server.cjs
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
     envVars:
-      - key: NODE_VERSION
-        value: 20
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: FALAI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: FREEPIK_API_KEY
+        sync: false
+      - key: LATE_API_KEY
+        sync: false
+    healthCheckPath: /api/health
     autoDeploy: true
