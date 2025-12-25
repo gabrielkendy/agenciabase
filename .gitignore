@@ -8,3 +8,4 @@ dist
 server/db.json
 .vite
 .vercel
+scripts/MINHAS_CHAVES.js
