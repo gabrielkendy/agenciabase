@@ -1,0 +1,77 @@
+{
+  "name": "12-backup-diario",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 3 * * *" }] }
+      },
+      "id": "cron-backup",
+      "name": "Cron 03:00 Diário",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.SAAS_URL }}/api/export/full",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "export-data",
+      "name": "Exportar Dados SaaS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst date = new Date().toISOString().split('T')[0];\nconst filename = `backup_base_agency_${date}.json`;\n\nreturn {\n  json: {\n    filename,\n    content: JSON.stringify(data, null, 2),\n    date,\n    size: JSON.stringify(data).length\n  }\n};"
+      },
+      "id": "prepare-backup",
+      "name": "Preparar Backup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "name": "={{ $json.filename }}",
+        "parents": ["backups"],
+        "binaryData": false,
+        "fileContent": "={{ $json.content }}"
+      },
+      "id": "save-drive",
+      "name": "Salvar Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [850, 300],
+      "credentials": { "googleDriveOAuth2Api": { "id": "google-drive-cred", "name": "Google Drive" } }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $vars.AGENCY_EMAIL }}",
+        "toEmail": "admin@agenciabase.tech",
+        "subject": "=✅ Backup Diário - {{ $now.format('dd/MM/yyyy') }}",
+        "emailType": "text",
+        "message": "=Backup realizado com sucesso!\\n\\nArquivo: {{ $json.filename }}\\nTamanho: {{ Math.round($json.size / 1024) }} KB\\nData: {{ $now.format('dd/MM/yyyy HH:mm') }}\\n\\nO arquivo foi salvo no Google Drive na pasta 'backups'."
+      },
+      "id": "notify-email",
+      "name": "Notificar Admin",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1050, 300],
+      "credentials": { "smtp": { "id": "smtp-cred", "name": "SMTP Gmail" } }
+    }
+  ],
+  "connections": {
+    "Cron 03:00 Diário": { "main": [[{ "node": "Exportar Dados SaaS", "type": "main", "index": 0 }]] },
+    "Exportar Dados SaaS": { "main": [[{ "node": "Preparar Backup", "type": "main", "index": 0 }]] },
+    "Preparar Backup": { "main": [[{ "node": "Salvar Google Drive", "type": "main", "index": 0 }]] },
+    "Salvar Google Drive": { "main": [[{ "node": "Notificar Admin", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["backup", "sistema"]
+}

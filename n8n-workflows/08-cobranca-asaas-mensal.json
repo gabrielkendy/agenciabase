@@ -1,0 +1,123 @@
+{
+  "name": "08-cobranca-asaas-mensal",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 1 * *" }] }
+      },
+      "id": "cron-cobranca",
+      "name": "Cron Dia 1 às 9h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.SAAS_URL }}/api/clients?active=true&billing=true",
+        "options": {}
+      },
+      "id": "get-clients",
+      "name": "Buscar Clientes Ativos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": { "batchSize": 1, "options": {} },
+      "id": "split-clients",
+      "name": "Processar Cada Cliente",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "combinator": "and" },
+          "conditions": [
+            { "leftValue": "={{ $json.asaas_customer_id }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty" } },
+            { "leftValue": "={{ $json.monthly_value }}", "rightValue": 0, "operator": { "type": "number", "operation": "gt" } }
+          ]
+        }
+      },
+      "id": "filter-valid",
+      "name": "Filtrar Válidos",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.asaas.com/v3/payments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "access_token", "value": "={{ $credentials.asaasApi.apiKey }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer\": \"{{ $json.asaas_customer_id }}\",\n  \"billingType\": \"{{ $json.billing_type || 'BOLETO' }}\",\n  \"value\": {{ $json.monthly_value }},\n  \"dueDate\": \"{{ $now.plus(10, 'days').format('yyyy-MM-dd') }}\",\n  \"description\": \"Mensalidade {{ $json.name }} - {{ $now.format('MMMM/yyyy') }}\"\n}",
+        "options": {}
+      },
+      "id": "create-payment",
+      "name": "Criar Cobrança Asaas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.EVOLUTION_API_URL }}/message/sendText/{{ $vars.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "apikey", "value": "={{ $credentials.evolutionApi.apiKey }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"55{{ $('Processar Cada Cliente').item.json.phone.replace(/\\D/g, '') }}\",\n  \"text\": \"Olá {{ $('Processar Cada Cliente').item.json.name }}! 💰\\n\\nSua cobrança de {{ $now.format('MMMM') }} foi gerada:\\n\\n*Valor: R$ {{ $('Processar Cada Cliente').item.json.monthly_value.toFixed(2) }}*\\nVencimento: {{ $now.plus(10, 'days').format('dd/MM/yyyy') }}\\n\\n🔗 Link de pagamento:\\n{{ $json.invoiceUrl }}\\n\\nQualquer dúvida, estamos à disposição!\"\n}",
+        "options": {}
+      },
+      "id": "notify-whatsapp",
+      "name": "Notificar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SAAS_URL }}/api/clients/{{ $('Processar Cada Cliente').item.json.id }}/billing",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"asaas_payment_id\": \"{{ $('Criar Cobrança Asaas').json.id }}\",\n  \"invoice_url\": \"{{ $('Criar Cobrança Asaas').json.invoiceUrl }}\",\n  \"status\": \"pending\",\n  \"due_date\": \"{{ $now.plus(10, 'days').format('yyyy-MM-dd') }}\"\n}",
+        "options": {}
+      },
+      "id": "update-saas",
+      "name": "Atualizar SaaS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1450, 300]
+    }
+  ],
+  "connections": {
+    "Cron Dia 1 às 9h": { "main": [[{ "node": "Buscar Clientes Ativos", "type": "main", "index": 0 }]] },
+    "Buscar Clientes Ativos": { "main": [[{ "node": "Processar Cada Cliente", "type": "main", "index": 0 }]] },
+    "Processar Cada Cliente": { "main": [[{ "node": "Filtrar Válidos", "type": "main", "index": 0 }]] },
+    "Filtrar Válidos": { "main": [[{ "node": "Criar Cobrança Asaas", "type": "main", "index": 0 }]] },
+    "Criar Cobrança Asaas": { "main": [[{ "node": "Notificar WhatsApp", "type": "main", "index": 0 }]] },
+    "Notificar WhatsApp": { "main": [[{ "node": "Atualizar SaaS", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["financeiro", "asaas", "cobranca"]
+}

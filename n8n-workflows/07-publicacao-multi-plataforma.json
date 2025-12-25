@@ -1,0 +1,131 @@
+{
+  "name": "07-publicacao-multi-plataforma",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "publicar-multi",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-pub",
+      "name": "Webhook Publicar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "demand_id", "value": "={{ $json.demand_id }}" },
+            { "name": "caption", "value": "={{ $json.caption }}" },
+            { "name": "hashtags", "value": "={{ $json.hashtags }}" },
+            { "name": "media_url", "value": "={{ $json.media[0].url }}" },
+            { "name": "channels", "value": "={{ $json.channels.join(',') }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-data",
+      "name": "Preparar Dados",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-channels",
+      "name": "Processar Canais",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.late.io/v1/posts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-API-Key", "value": "={{ $credentials.lateApi.apiKey }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"{{ $json.caption }}\\n\\n{{ $json.hashtags }}\",\n  \"platforms\": [\"{{ $json.current_channel }}\"],\n  \"media\": [{ \"url\": \"{{ $json.media_url }}\" }]\n}",
+        "options": {}
+      },
+      "id": "late-publish",
+      "name": "Publicar Late API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "platform", "value": "={{ $json.current_channel }}" },
+            { "name": "status", "value": "={{ $json.success ? 'published' : 'error' }}" },
+            { "name": "post_url", "value": "={{ $json.url || '' }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "collect-results",
+      "name": "Coletar Resultados",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SAAS_URL }}/api/demands/{{ $('Preparar Dados').item.json.demand_id }}/published",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"results\": {{ JSON.stringify($items()) }}\n}",
+        "options": {}
+      },
+      "id": "update-saas",
+      "name": "Atualizar SaaS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true, \"message\": \"Publicação processada\" }",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1450, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Publicar": { "main": [[{ "node": "Preparar Dados", "type": "main", "index": 0 }]] },
+    "Preparar Dados": { "main": [[{ "node": "Processar Canais", "type": "main", "index": 0 }]] },
+    "Processar Canais": { "main": [[{ "node": "Publicar Late API", "type": "main", "index": 0 }]] },
+    "Publicar Late API": { "main": [[{ "node": "Coletar Resultados", "type": "main", "index": 0 }]] },
+    "Coletar Resultados": { "main": [[{ "node": "Atualizar SaaS", "type": "main", "index": 0 }]] },
+    "Atualizar SaaS": { "main": [[{ "node": "Responder Webhook", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["publicacao", "late-api", "multi-plataforma"]
+}

@@ -1,0 +1,96 @@
+{
+  "name": "13-relatorio-semanal",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * 1" }] }
+      },
+      "id": "cron-relatorio",
+      "name": "Cron Segunda 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.SAAS_URL }}/api/metrics/weekly",
+        "options": {}
+      },
+      "id": "get-metrics",
+      "name": "Buscar Métricas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={{ $credentials.geminiApi.apiKey }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"Você é um analista de marketing digital. Crie um relatório semanal profissional com base nas seguintes métricas:\\n\\n{{ JSON.stringify($json) }}\\n\\nInclua:\\n1. Resumo executivo\\n2. Principais métricas\\n3. Destaques da semana\\n4. Pontos de atenção\\n5. Recomendações\\n\\nUse formatação clara com emojis relevantes.\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"temperature\": 0.7,\n    \"maxOutputTokens\": 4096\n  }\n}",
+        "options": {}
+      },
+      "id": "generate-report",
+      "name": "Gerar Relatório IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst report = response.candidates?.[0]?.content?.parts?.[0]?.text || 'Erro ao gerar relatório';\nconst weekStart = new Date();\nweekStart.setDate(weekStart.getDate() - 7);\n\nreturn {\n  json: {\n    title: `Relatório Semanal - ${weekStart.toLocaleDateString('pt-BR')} a ${new Date().toLocaleDateString('pt-BR')}`,\n    content: report,\n    generated_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "format-report",
+      "name": "Formatar Relatório",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $vars.AGENCY_EMAIL }}",
+        "toEmail": "admin@agenciabase.tech",
+        "subject": "=📊 {{ $json.title }}",
+        "emailType": "html",
+        "html": "=<html><body style=\"font-family: Arial, sans-serif; padding: 20px;\"><h1 style=\"color: #f97316;\">{{ $json.title }}</h1><div style=\"white-space: pre-wrap; line-height: 1.6;\">{{ $json.content }}</div><hr><p style=\"color: #666; font-size: 12px;\">Gerado automaticamente por BASE Agency em {{ $json.generated_at }}</p></body></html>"
+      },
+      "id": "send-email",
+      "name": "Enviar por Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1050, 300],
+      "credentials": { "smtp": { "id": "smtp-cred", "name": "SMTP Gmail" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SAAS_URL }}/api/reports/save",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "save-report",
+      "name": "Salvar no SaaS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Cron Segunda 08:00": { "main": [[{ "node": "Buscar Métricas", "type": "main", "index": 0 }]] },
+    "Buscar Métricas": { "main": [[{ "node": "Gerar Relatório IA", "type": "main", "index": 0 }]] },
+    "Gerar Relatório IA": { "main": [[{ "node": "Formatar Relatório", "type": "main", "index": 0 }]] },
+    "Formatar Relatório": { "main": [[{ "node": "Enviar por Email", "type": "main", "index": 0 }]] },
+    "Enviar por Email": { "main": [[{ "node": "Salvar no SaaS", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["relatorio", "ia", "metricas"]
+}

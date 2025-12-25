@@ -1,0 +1,142 @@
+{
+  "name": "09-webhook-pagamento-asaas",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "asaas-payment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-asaas",
+      "name": "Webhook Asaas",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "confirmed",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.event }}", "rightValue": "PAYMENT_CONFIRMED", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "overdue",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.event }}", "rightValue": "PAYMENT_OVERDUE", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "refunded",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.event }}", "rightValue": "PAYMENT_REFUNDED", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            }
+          ]
+        }
+      },
+      "id": "switch-event",
+      "name": "Tipo de Evento",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SAAS_URL }}/api/payments/confirmed",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"payment_id\": \"{{ $json.payment.id }}\",\n  \"customer_id\": \"{{ $json.payment.customer }}\",\n  \"value\": {{ $json.payment.value }},\n  \"paid_at\": \"{{ $json.payment.confirmedDate }}\"\n}"
+      },
+      "id": "update-confirmed",
+      "name": "Pagamento Confirmado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 150]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.EVOLUTION_API_URL }}/message/sendText/{{ $vars.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "apikey", "value": "={{ $credentials.evolutionApi.apiKey }}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"55{{ $json.customer_phone }}\",\n  \"text\": \"✅ Pagamento confirmado!\\n\\nObrigado {{ $json.customer_name }}!\\n\\nValor: R$ {{ $json.payment.value.toFixed(2) }}\\n\\nAgradecemos a confiança! 🙏\"\n}"
+      },
+      "id": "notify-confirmed",
+      "name": "Notificar Pagamento OK",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [950, 150]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SAAS_URL }}/api/payments/overdue",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"payment_id\": \"{{ $json.payment.id }}\",\n  \"customer_id\": \"{{ $json.payment.customer }}\"\n}"
+      },
+      "id": "update-overdue",
+      "name": "Pagamento Atrasado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.EVOLUTION_API_URL }}/message/sendText/{{ $vars.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "apikey", "value": "={{ $credentials.evolutionApi.apiKey }}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"55{{ $json.customer_phone }}\",\n  \"text\": \"⚠️ Olá {{ $json.customer_name }}\\n\\nIdentificamos que seu pagamento está em atraso:\\n\\n*Valor: R$ {{ $json.payment.value.toFixed(2) }}*\\n\\n🔗 Regularize aqui:\\n{{ $json.payment.invoiceUrl }}\\n\\nQualquer dúvida, estamos à disposição!\"\n}"
+      },
+      "id": "notify-overdue",
+      "name": "Notificar Atraso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [950, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"received\": true }",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1200, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Asaas": { "main": [[{ "node": "Tipo de Evento", "type": "main", "index": 0 }]] },
+    "Tipo de Evento": {
+      "main": [
+        [{ "node": "Pagamento Confirmado", "type": "main", "index": 0 }],
+        [{ "node": "Pagamento Atrasado", "type": "main", "index": 0 }],
+        [{ "node": "Responder OK", "type": "main", "index": 0 }]
+      ]
+    },
+    "Pagamento Confirmado": { "main": [[{ "node": "Notificar Pagamento OK", "type": "main", "index": 0 }]] },
+    "Pagamento Atrasado": { "main": [[{ "node": "Notificar Atraso", "type": "main", "index": 0 }]] },
+    "Notificar Pagamento OK": { "main": [[{ "node": "Responder OK", "type": "main", "index": 0 }]] },
+    "Notificar Atraso": { "main": [[{ "node": "Responder OK", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["financeiro", "asaas", "webhook"]
+}

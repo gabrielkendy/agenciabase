@@ -1,0 +1,90 @@
+{
+  "name": "06-aprovacao-interna",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aprovacao-interna",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook Aprovação Interna",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "approve",
+              "conditions": {
+                "options": { "combinator": "and" },
+                "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "approve", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "reject",
+              "conditions": {
+                "options": { "combinator": "and" },
+                "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "reject", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "request_changes",
+              "conditions": {
+                "options": { "combinator": "and" },
+                "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "request_changes", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-1",
+      "name": "Verificar Ação",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SAAS_URL }}/api/demands/{{ $json.demand_id }}/approve-internal",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "approver_id", "value": "={{ $json.approver_id }}" },
+            { "name": "approver_name", "value": "={{ $json.approver_name }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-approve",
+      "name": "Aprovar no SaaS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Aprovação Interna": { "main": [[{ "node": "Verificar Ação", "type": "main", "index": 0 }]] },
+    "Verificar Ação": {
+      "main": [
+        [{ "node": "Aprovar no SaaS", "type": "main", "index": 0 }],
+        [{ "node": "Rejeitar no SaaS", "type": "main", "index": 0 }],
+        [{ "node": "Solicitar Ajustes", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "1",
+  "tags": ["aprovacao", "interno"]
+}

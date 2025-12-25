@@ -1,0 +1,104 @@
+{
+  "name": "11-analise-sentimento",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analisar-sentimento",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-sentiment",
+      "name": "Webhook Análise",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={{ $credentials.geminiApi.apiKey }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"Analise o sentimento do seguinte texto e responda APENAS em JSON:\\n\\nTexto: {{ $json.text }}\\n\\nFormato de resposta:\\n{\\n  \\\"sentiment\\\": \\\"positive\\\" | \\\"neutral\\\" | \\\"negative\\\",\\n  \\\"confidence\\\": 0.0 a 1.0,\\n  \\\"emotions\\\": [\\\"emoção1\\\", \\\"emoção2\\\"],\\n  \\\"summary\\\": \\\"resumo breve da análise\\\",\\n  \\\"suggestions\\\": [\\\"sugestão de resposta se negativo\\\"]\\n}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"temperature\": 0.3,\n    \"maxOutputTokens\": 1024\n  }\n}",
+        "options": {}
+      },
+      "id": "call-gemini",
+      "name": "Analisar com Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';\n\nlet parsed = {\n  sentiment: 'neutral',\n  confidence: 0.5,\n  emotions: [],\n  summary: '',\n  suggestions: []\n};\n\ntry {\n  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsed = { ...parsed, ...JSON.parse(jsonMatch[0]) };\n  }\n} catch (e) {\n  // mantém valores default\n}\n\nreturn { json: { success: true, analysis: parsed } };"
+      },
+      "id": "parse-sentiment",
+      "name": "Processar Análise",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "leftValue": "={{ $json.analysis.sentiment }}", "rightValue": "negative", "operator": { "type": "string", "operation": "equals" } },
+            { "leftValue": "={{ $json.analysis.confidence }}", "rightValue": 0.7, "operator": { "type": "number", "operation": "gte" } }
+          ]
+        }
+      },
+      "id": "check-negative",
+      "name": "Verificar Negativo",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SAAS_URL }}/api/notifications/alert",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"sentiment_alert\",\n  \"severity\": \"high\",\n  \"message\": \"Feedback negativo detectado\",\n  \"data\": {{ JSON.stringify($json.analysis) }}\n}",
+        "options": {}
+      },
+      "id": "alert-negative",
+      "name": "Alertar Admin",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Responder",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1050, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Análise": { "main": [[{ "node": "Analisar com Gemini", "type": "main", "index": 0 }]] },
+    "Analisar com Gemini": { "main": [[{ "node": "Processar Análise", "type": "main", "index": 0 }]] },
+    "Processar Análise": { "main": [[{ "node": "Verificar Negativo", "type": "main", "index": 0 }]] },
+    "Verificar Negativo": {
+      "main": [
+        [{ "node": "Alertar Admin", "type": "main", "index": 0 }],
+        [{ "node": "Responder", "type": "main", "index": 0 }]
+      ]
+    },
+    "Alertar Admin": { "main": [[{ "node": "Responder", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["ia", "sentimento", "analise"]
+}

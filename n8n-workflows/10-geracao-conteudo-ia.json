@@ -1,0 +1,85 @@
+{
+  "name": "10-geracao-conteudo-ia",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gerar-conteudo",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-ia",
+      "name": "Webhook Gerar Conteúdo",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "prompt", "value": "={{ $json.prompt }}" },
+            { "name": "type", "value": "={{ $json.type || 'post' }}" },
+            { "name": "platform", "value": "={{ $json.platform || 'instagram' }}" },
+            { "name": "tone", "value": "={{ $json.tone || 'casual' }}" }
+          ]
+        }
+      },
+      "id": "prepare-prompt",
+      "name": "Preparar Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={{ $credentials.geminiApi.apiKey }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"Você é um expert em marketing digital e social media.\\n\\nCrie conteúdo para {{ $json.platform }} com tom {{ $json.tone }}.\\nTipo de conteúdo: {{ $json.type }}\\n\\nSolicitação do usuário: {{ $json.prompt }}\\n\\nResponda em JSON com o formato:\\n{\\n  \\\"caption\\\": \\\"legenda do post\\\",\\n  \\\"hashtags\\\": \\\"#hashtag1 #hashtag2 ...\\\",\\n  \\\"cta\\\": \\\"call to action\\\",\\n  \\\"hook\\\": \\\"gancho inicial\\\"\\n}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"temperature\": 0.8,\n    \"maxOutputTokens\": 2048\n  }\n}",
+        "options": {}
+      },
+      "id": "call-gemini",
+      "name": "Chamar Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';\n\n// Tentar extrair JSON da resposta\nlet parsed = {};\ntry {\n  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsed = JSON.parse(jsonMatch[0]);\n  }\n} catch (e) {\n  parsed = { caption: text, hashtags: '', cta: '', hook: '' };\n}\n\nreturn {\n  json: {\n    success: true,\n    content: parsed,\n    raw_response: text\n  }\n};"
+      },
+      "id": "parse-response",
+      "name": "Processar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Responder",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Gerar Conteúdo": { "main": [[{ "node": "Preparar Prompt", "type": "main", "index": 0 }]] },
+    "Preparar Prompt": { "main": [[{ "node": "Chamar Gemini", "type": "main", "index": 0 }]] },
+    "Chamar Gemini": { "main": [[{ "node": "Processar Resposta", "type": "main", "index": 0 }]] },
+    "Processar Resposta": { "main": [[{ "node": "Responder", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["ia", "gemini", "conteudo"]
+}
