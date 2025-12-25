@@ -1,0 +1,148 @@
+{
+  "name": "BASE Agency - Lembrete de Atraso",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24,
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "cron-atraso",
+      "name": "Cron Diário 9h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://agenciabase.onrender.com/api/demands/overdue",
+        "options": {}
+      },
+      "id": "get-overdue",
+      "name": "Buscar Atrasadas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.demands.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-overdue",
+      "name": "Tem Atrasadas?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "demands",
+        "options": {}
+      },
+      "id": "split-demands",
+      "name": "Para Cada Demanda",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.z-api.io/instances/{{$node['Config'].json.zapi_instance}}/token/{{$node['Config'].json.zapi_token}}/send-text",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{$json.assignee_phone}}"
+            },
+            {
+              "name": "message",
+              "value": "⚠️ LEMBRETE: Demanda atrasada!\n\n*{{$json.title}}*\nCliente: {{$json.client_name}}\nPrazo: {{$json.deadline}}\n\nPor favor, verifique!"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notify-team",
+      "name": "Notificar Responsável",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 200]
+    }
+  ],
+  "connections": {
+    "Cron Diário 9h": {
+      "main": [
+        [
+          {
+            "node": "Buscar Atrasadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Atrasadas": {
+      "main": [
+        [
+          {
+            "node": "Tem Atrasadas?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Atrasadas?": {
+      "main": [
+        [
+          {
+            "node": "Para Cada Demanda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Para Cada Demanda": {
+      "main": [
+        [
+          {
+            "node": "Notificar Responsável",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
