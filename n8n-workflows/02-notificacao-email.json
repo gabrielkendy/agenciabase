@@ -1,0 +1,77 @@
+{
+  "name": "BASE Agency - Notificação Email",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "notificar-email",
+        "options": {}
+      },
+      "id": "webhook-email",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$json.from_email || 'noreply@agenciabase.com'}}",
+        "toEmail": "={{$json.to_email}}",
+        "subject": "={{$json.subject}}",
+        "emailType": "html",
+        "html": "={{$json.html_content}}",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [500, 300],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credential",
+          "name": "SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{ \"success\": true, \"message\": \"Email enviado com sucesso\" }",
+        "options": {}
+      },
+      "id": "response-email",
+      "name": "Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -576,17 +576,14 @@ Responda APENAS com um JSON válido no formato:
           contextMessage = `[O usuário enviou ${attachments.length} anexo(s): ${attachments.map(a => `${a.type}: ${a.name}`).join(', ')}]\n\n${userMessage}`;
         }
 
-        // Chamar Edge Function - seguro, escalável
+        // Chamar Backend API - keys seguras no servidor
         response = await callChatAPI(
           provider as 'gemini' | 'openrouter' | 'openai',
           contextMessage,
           agent.system_prompt,
           currentMessages.map((m) => ({ role: m.role, content: m.content })),
           agent.model,
-          agent.temperature || 0.7,
-          provider === 'openrouter' ? apiConfig.openrouter_key :
-          provider === 'openai' ? apiConfig.openai_key :
-          apiConfig.gemini_key
+          agent.temperature || 0.7
         );
 
         addMessage({

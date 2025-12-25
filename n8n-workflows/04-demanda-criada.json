@@ -1,0 +1,159 @@
+{
+  "name": "BASE Agency - Demanda Criada",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "demanda-criada",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-demanda",
+      "name": "Webhook Demanda Criada",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"phone\": \"{{ $json.client_phone }}\",\n  \"message\": \"📋 Nova demanda criada!\\n\\n*{{ $json.demand_title }}*\\nCliente: {{ $json.client_name }}\\nTipo: {{ $json.content_type }}\\n\\nAcesse: {{ $json.approval_link }}\",\n  \"zapi_instance\": \"{{ $json.zapi_instance }}\",\n  \"zapi_token\": \"{{ $json.zapi_token }}\"\n}",
+        "options": {}
+      },
+      "id": "prepare-whatsapp",
+      "name": "Preparar WhatsApp",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 200]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"to_email\": \"{{ $json.client_email }}\",\n  \"subject\": \"Nova demanda: {{ $json.demand_title }}\",\n  \"html_content\": \"<h2>Nova demanda criada!</h2><p><strong>{{ $json.demand_title }}</strong></p><p>Tipo: {{ $json.content_type }}</p><p><a href='{{ $json.approval_link }}'>Clique aqui para aprovar</a></p>\"\n}",
+        "options": {}
+      },
+      "id": "prepare-email",
+      "name": "Preparar Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.z-api.io/instances/{{$json.zapi_instance}}/token/{{$json.zapi_token}}/send-text",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{$json.phone}}"
+            },
+            {
+              "name": "message",
+              "value": "={{$json.message}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-whatsapp",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 200]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@agenciabase.com",
+        "toEmail": "={{$json.to_email}}",
+        "subject": "={{$json.subject}}",
+        "emailType": "html",
+        "html": "={{$json.html_content}}",
+        "options": {}
+      },
+      "id": "send-email-demanda",
+      "name": "Enviar Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [750, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true, \"notifications_sent\": [\"whatsapp\", \"email\"] }",
+        "options": {}
+      },
+      "id": "response-demanda",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Demanda Criada": {
+      "main": [
+        [
+          {
+            "node": "Preparar WhatsApp",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparar Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Email": {
+      "main": [
+        [
+          {
+            "node": "Enviar Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Email": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

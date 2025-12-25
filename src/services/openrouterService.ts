@@ -1,180 +1,129 @@
-// OpenRouter API Service
-// Docs: https://openrouter.ai/docs
+// OpenRouter Service - Multi-Model AI Access
+// Acesso a múltiplos modelos de IA (GPT-4, Claude, Gemini, Llama, etc.)
 
-import { AIModel, AI_MODELS } from '../types';
-import { tokenTracker } from '../lib/tokenTracker';
+export interface OpenRouterConfig {
+  apiKey: string;
+  defaultModel?: string;
+}
 
-// Estimar tokens (aproximacao: 1 token ~= 4 caracteres)
-const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
-
-interface ChatMessage {
+export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
 }
 
-interface OpenRouterResponse {
+export interface ChatCompletionParams {
+  model?: string;
+  messages: ChatMessage[];
+  temperature?: number;
+  max_tokens?: number;
+  stream?: boolean;
+  top_p?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+}
+
+export interface Model {
   id: string;
-  choices: {
-    message: {
-      role: string;
-      content: string;
-    };
-    finish_reason: string;
-  }[];
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
+  name: string;
+  description?: string;
+  context_length: number;
+  pricing: {
+    prompt: number;
+    completion: number;
   };
 }
 
+// Modelos populares disponíveis no OpenRouter
+export const POPULAR_MODELS = {
+  // OpenAI
+  GPT4_TURBO: 'openai/gpt-4-turbo-preview',
+  GPT4: 'openai/gpt-4',
+  GPT35_TURBO: 'openai/gpt-3.5-turbo',
+  
+  // Anthropic
+  CLAUDE_3_OPUS: 'anthropic/claude-3-opus',
+  CLAUDE_3_SONNET: 'anthropic/claude-3-sonnet',
+  CLAUDE_3_HAIKU: 'anthropic/claude-3-haiku',
+  
+  // Google
+  GEMINI_PRO: 'google/gemini-pro',
+  GEMINI_PRO_VISION: 'google/gemini-pro-vision',
+  
+  // Meta
+  LLAMA_3_70B: 'meta-llama/llama-3-70b-instruct',
+  LLAMA_3_8B: 'meta-llama/llama-3-8b-instruct',
+  
+  // Mistral
+  MISTRAL_LARGE: 'mistralai/mistral-large',
+  MISTRAL_MEDIUM: 'mistralai/mistral-medium',
+  MIXTRAL_8X7B: 'mistralai/mixtral-8x7b-instruct',
+  
+  // Others
+  COHERE_COMMAND: 'cohere/command-r-plus',
+  PERPLEXITY: 'perplexity/pplx-70b-online',
+} as const;
+
 class OpenRouterService {
+  private apiKey: string = '';
+  private defaultModel: string = POPULAR_MODELS.GPT4_TURBO;
   private baseUrl = 'https://openrouter.ai/api/v1';
-  private apiKey: string | null = null;
 
-  setApiKey(key: string) {
-    this.apiKey = key;
-  }
-
-  getApiKey(): string | null {
-    return this.apiKey;
-  }
-
-  // Validar API key
-  async validateApiKey(): Promise<boolean> {
-    if (!this.apiKey) return false;
-    
-    try {
-      const response = await fetch(`${this.baseUrl}/models`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-        },
-      });
-      return response.ok;
-    } catch {
-      return false;
+  setConfig(config: OpenRouterConfig) {
+    this.apiKey = config.apiKey;
+    if (config.defaultModel) {
+      this.defaultModel = config.defaultModel;
     }
   }
 
-  // Listar modelos disponíveis
-  async getModels(): Promise<any[]> {
-    if (!this.apiKey) return [];
-    
-    try {
-      const response = await fetch(`${this.baseUrl}/models`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-        },
-      });
-      
-      if (!response.ok) return [];
-      
-      const data = await response.json();
-      return data.data || [];
-    } catch {
-      return [];
-    }
-  }
-
-  // Chat completion
-  async chat(
-    model: AIModel,
-    messages: ChatMessage[],
-    options: {
-      temperature?: number;
-      maxTokens?: number;
-      stream?: boolean;
-      userId?: string;
-      userName?: string;
-    } = {}
-  ): Promise<string> {
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     if (!this.apiKey) {
       throw new Error('OpenRouter API key não configurada');
     }
 
-    const inputText = messages.map(m => m.content).join(' ');
-    const inputTokens = estimateTokens(inputText);
-    const startTime = performance.now();
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'BASE Agency SaaS',
+        ...options.headers,
+      },
+    });
 
-    try {
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'BASE Agency SaaS',
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: messages,
-          temperature: options.temperature ?? 0.7,
-          max_tokens: options.maxTokens ?? 4096,
-          stream: false,
-        }),
-      });
-
-      const responseTimeMs = Math.round(performance.now() - startTime);
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        tokenTracker.trackChat({
-          userId: options.userId || 'anonymous',
-          userName: options.userName,
-          provider: 'openrouter',
-          model: model,
-          inputTokens,
-          outputTokens: 0,
-          responseTimeMs,
-          success: false,
-          error: error.error?.message || `Erro ${response.status}`
-        });
-        throw new Error(error.error?.message || `Erro ${response.status}`);
-      }
-
-      const data: OpenRouterResponse = await response.json();
-      const outputText = data.choices[0]?.message?.content || '';
-      const outputTokens = data.usage?.completion_tokens || estimateTokens(outputText);
-      const actualInputTokens = data.usage?.prompt_tokens || inputTokens;
-
-      tokenTracker.trackChat({
-        userId: options.userId || 'anonymous',
-        userName: options.userName,
-        provider: 'openrouter',
-        model: model,
-        inputTokens: actualInputTokens,
-        outputTokens,
-        responseTimeMs,
-        success: true
-      });
-
-      return outputText;
-    } catch (error) {
-      const responseTimeMs = Math.round(performance.now() - startTime);
-      tokenTracker.trackChat({
-        userId: options.userId || 'anonymous',
-        userName: options.userName,
-        provider: 'openrouter',
-        model: model,
-        inputTokens,
-        outputTokens: 0,
-        responseTimeMs,
-        success: false,
-        error: error instanceof Error ? error.message : 'Erro desconhecido'
-      });
-      throw error;
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error?.message || `HTTP ${response.status}`);
     }
+
+    return response.json();
+  }
+
+  // ============================================
+  // CHAT COMPLETIONS
+  // ============================================
+
+  async chat(params: ChatCompletionParams): Promise<{
+    id: string;
+    choices: Array<{ message: ChatMessage; finish_reason: string }>;
+    usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  }> {
+    return this.request('/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: params.model || this.defaultModel,
+        messages: params.messages,
+        temperature: params.temperature ?? 0.7,
+        max_tokens: params.max_tokens ?? 4096,
+        top_p: params.top_p,
+        frequency_penalty: params.frequency_penalty,
+        presence_penalty: params.presence_penalty,
+      }),
+    });
   }
 
   // Chat com streaming
-  async *chatStream(
-    model: AIModel,
-    messages: ChatMessage[],
-    options: {
-      temperature?: number;
-      maxTokens?: number;
-    } = {}
-  ): AsyncGenerator<string> {
+  async *chatStream(params: ChatCompletionParams): AsyncGenerator<string, void, unknown> {
     if (!this.apiKey) {
       throw new Error('OpenRouter API key não configurada');
     }
@@ -188,21 +137,20 @@ class OpenRouterService {
         'X-Title': 'BASE Agency SaaS',
       },
       body: JSON.stringify({
-        model: model,
-        messages: messages,
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 4096,
+        model: params.model || this.defaultModel,
+        messages: params.messages,
+        temperature: params.temperature ?? 0.7,
+        max_tokens: params.max_tokens ?? 4096,
         stream: true,
       }),
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error?.message || `Erro ${response.status}`);
+      throw new Error(`HTTP ${response.status}`);
     }
 
     const reader = response.body?.getReader();
-    if (!reader) throw new Error('Stream não disponível');
+    if (!reader) throw new Error('No reader');
 
     const decoder = new TextDecoder();
     let buffer = '';
@@ -219,40 +167,103 @@ class OpenRouterService {
         if (line.startsWith('data: ')) {
           const data = line.slice(6);
           if (data === '[DONE]') return;
-          
+
           try {
-            const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content;
+            const json = JSON.parse(data);
+            const content = json.choices?.[0]?.delta?.content;
             if (content) yield content;
           } catch {
-            // Ignorar linhas mal formatadas
+            // Ignore parse errors
           }
         }
       }
     }
   }
 
-  // Obter info do modelo
-  getModelInfo(modelId: AIModel) {
-    return AI_MODELS.find(m => m.id === modelId);
+  // ============================================
+  // MODELS
+  // ============================================
+
+  async getModels(): Promise<{ data: Model[] }> {
+    return this.request('/models');
   }
 
-  // Verificar se modelo é gratuito
-  isModelFree(modelId: AIModel): boolean {
-    const model = this.getModelInfo(modelId);
-    return model?.isFree ?? false;
+  // ============================================
+  // HELPER METHODS
+  // ============================================
+
+  // Chat simples (uma mensagem, uma resposta)
+  async simpleChat(
+    userMessage: string,
+    systemPrompt?: string,
+    model?: string
+  ): Promise<string> {
+    const messages: ChatMessage[] = [];
+    
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
+    }
+    
+    messages.push({ role: 'user', content: userMessage });
+
+    const response = await this.chat({
+      model,
+      messages,
+    });
+
+    return response.choices[0]?.message?.content || '';
   }
 
-  // Obter apenas modelos gratuitos
-  getFreeModels() {
-    return AI_MODELS.filter(m => m.isFree);
+  // Gerar com diferentes modelos e comparar
+  async compareModels(
+    userMessage: string,
+    models: string[],
+    systemPrompt?: string
+  ): Promise<Array<{ model: string; response: string; tokens: number }>> {
+    const results = await Promise.all(
+      models.map(async (model) => {
+        try {
+          const messages: ChatMessage[] = [];
+          if (systemPrompt) {
+            messages.push({ role: 'system', content: systemPrompt });
+          }
+          messages.push({ role: 'user', content: userMessage });
+
+          const response = await this.chat({ model, messages });
+          
+          return {
+            model,
+            response: response.choices[0]?.message?.content || '',
+            tokens: response.usage?.total_tokens || 0,
+          };
+        } catch (error: any) {
+          return {
+            model,
+            response: `Erro: ${error.message}`,
+            tokens: 0,
+          };
+        }
+      })
+    );
+
+    return results;
   }
 
-  // Obter modelos por provider
-  getModelsByProvider(provider: 'openai' | 'gemini' | 'openrouter') {
-    return AI_MODELS.filter(m => m.provider === provider);
+  // Verificar se está configurado
+  isConfigured(): boolean {
+    return !!this.apiKey;
+  }
+
+  // Obter modelo padrão
+  getDefaultModel(): string {
+    return this.defaultModel;
+  }
+
+  // Definir modelo padrão
+  setDefaultModel(model: string) {
+    this.defaultModel = model;
   }
 }
 
-// Singleton
-export const openrouterService = new OpenRouterService();
+export const openRouterService = new OpenRouterService();
+export default openRouterService;

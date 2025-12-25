@@ -30,6 +30,7 @@ const ApprovalPage = lazy(() => import('./pages/ApprovalPage').then(m => ({ defa
 const ChatbotPage = lazy(() => import('./pages/ChatbotPage').then(m => ({ default: m.ChatbotPage })));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })));
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage').then(m => ({ default: m.ProjectsPage })));
+const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage').then(m => ({ default: m.default })));
 
 // Super Admin Pages - lazy loaded
 const SuperAdminDashboard = lazy(() => import('./pages/super-admin/SuperAdminDashboard').then(m => ({ default: m.SuperAdminDashboard })));
@@ -217,6 +218,7 @@ function AppContent() {
             <Route path="/content/:demandId" element={<ProtectedRoute><ContentCreatorPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             <Route path="/projects" element={<ProtectedRoute><ProjectsPage /></ProtectedRoute>} />
+            <Route path="/integrations" element={<AdminRoute><IntegrationsPage /></AdminRoute>} />
 
             {/* Super Admin Routes */}
             <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />

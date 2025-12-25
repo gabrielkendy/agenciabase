@@ -1,0 +1,164 @@
+{
+  "name": "BASE Agency - Webhook Aprovação",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aprovacao-cliente",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-aprovacao",
+      "name": "Webhook Aprovação",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "approve",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-action",
+      "name": "Verificar Ação",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://agenciabase.onrender.com/api/demands/{{$json.demand_id}}/approve",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "={{$json.token}}"
+            },
+            {
+              "name": "approved_by",
+              "value": "={{$json.approved_by}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-status-approved",
+      "name": "Atualizar Status - Aprovado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://agenciabase.onrender.com/api/demands/{{$json.demand_id}}/adjustment",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "={{$json.token}}"
+            },
+            {
+              "name": "feedback",
+              "value": "={{$json.feedback}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-status-adjustment",
+      "name": "Atualizar Status - Ajuste",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true, \"action\": \"{{ $json.action }}\", \"demand_id\": \"{{ $json.demand_id }}\" }",
+        "options": {}
+      },
+      "id": "response-aprovacao",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Aprovação": {
+      "main": [
+        [
+          {
+            "node": "Verificar Ação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Ação": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Status - Aprovado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Atualizar Status - Ajuste",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar Status - Aprovado": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar Status - Ajuste": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

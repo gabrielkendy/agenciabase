@@ -1,194 +1,214 @@
-// FAL.ai API Service for Image and Video Generation
+// FAL.AI Service - Image & Video Generation
+// https://fal.ai
 
-const FAL_API_URL = 'https://queue.fal.run';
+export interface FalConfig {
+  apiKey: string;
+}
 
-export interface FalImageOptions {
-  model?: 'fal-ai/flux-pro' | 'fal-ai/flux/dev' | 'fal-ai/flux-lora';
-  aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
-  numImages?: number;
+export interface ImageGenerationParams {
+  prompt: string;
+  negative_prompt?: string;
+  image_size?: 'square_hd' | 'square' | 'portrait_4_3' | 'portrait_16_9' | 'landscape_4_3' | 'landscape_16_9';
+  num_inference_steps?: number;
+  guidance_scale?: number;
+  num_images?: number;
+  seed?: number;
+  model?: string;
+}
+
+export interface ImageResult {
+  url: string;
+  width: number;
+  height: number;
+  content_type: string;
+}
+
+export interface VideoGenerationParams {
+  prompt: string;
+  negative_prompt?: string;
+  duration?: number;
+  aspect_ratio?: '16:9' | '9:16' | '1:1';
   seed?: number;
 }
 
-export interface FalVideoOptions {
-  model?: 'fal-ai/kling-video/v1.5/pro/image-to-video' | 'fal-ai/minimax-video/image-to-video' | 'fal-ai/luma-dream-machine';
-  duration?: '5' | '10';
+export interface VideoResult {
+  url: string;
+  duration: number;
+  width: number;
+  height: number;
 }
 
-export interface FalQueueResponse {
-  request_id: string;
-  status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
-  response_url?: string;
-}
+// Modelos disponíveis
+export const FAL_MODELS = {
+  // Image Generation
+  FLUX_PRO: 'fal-ai/flux-pro',
+  FLUX_DEV: 'fal-ai/flux/dev',
+  FLUX_SCHNELL: 'fal-ai/flux/schnell',
+  STABLE_DIFFUSION_XL: 'fal-ai/stable-diffusion-xl',
+  REALVIS_XL: 'fal-ai/realvisxl',
+  
+  // Image Enhancement
+  UPSCALER: 'fal-ai/esrgan',
+  FACE_RESTORE: 'fal-ai/gfpgan',
+  REMOVE_BG: 'fal-ai/remove-background',
+  
+  // Video Generation
+  RUNWAY_GEN3: 'fal-ai/runway-gen3/turbo',
+  STABLE_VIDEO: 'fal-ai/stable-video-diffusion',
+  
+  // Image to Image
+  IMG2IMG: 'fal-ai/flux/dev/image-to-image',
+  CONTROLNET: 'fal-ai/controlnet-sdxl',
+} as const;
 
-export interface FalImageResult {
-  images: { url: string; content_type: string; width: number; height: number }[];
-  seed: number;
-  prompt: string;
-}
+class FalAIService {
+  private apiKey: string = '';
+  private baseUrl = 'https://fal.run';
 
-export interface FalVideoResult {
-  video: { url: string; content_type?: string };
-}
+  setApiKey(key: string) {
+    this.apiKey = key;
+  }
 
-export const falaiService = {
-  // Generate image with Flux
-  generateImage: async (
-    prompt: string,
-    apiKey: string,
-    options: FalImageOptions = {}
-  ): Promise<FalImageResult> => {
-    const model = options.model || 'fal-ai/flux/dev';
+  private async request<T>(
+    model: string,
+    input: Record<string, unknown>,
+    options?: { sync?: boolean }
+  ): Promise<T> {
+    if (!this.apiKey) {
+      throw new Error('FAL.AI API key não configurada');
+    }
 
-    // Map aspect ratio to image size
-    const sizeMap: Record<string, { width: number; height: number }> = {
-      '16:9': { width: 1344, height: 768 },
-      '9:16': { width: 768, height: 1344 },
-      '1:1': { width: 1024, height: 1024 },
-      '4:3': { width: 1152, height: 896 },
-      '3:4': { width: 896, height: 1152 },
-    };
+    // Usar endpoint síncrono por padrão para simplicidade
+    const endpoint = options?.sync !== false ? `${this.baseUrl}/${model}` : `https://queue.fal.run/${model}`;
 
-    const size = sizeMap[options.aspectRatio || '9:16'];
-
-    const response = await fetch(`${FAL_API_URL}/${model}`, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
+        'Authorization': `Key ${this.apiKey}`,
         'Content-Type': 'application/json',
-        'Authorization': `Key ${apiKey}`,
       },
-      body: JSON.stringify({
-        prompt,
-        image_size: size,
-        num_images: options.numImages || 1,
-        seed: options.seed,
-        enable_safety_checker: true,
-      }),
+      body: JSON.stringify(input),
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new Error(error.detail || `FAL.ai error: ${response.status}`);
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || error.message || `HTTP ${response.status}`);
     }
 
     return response.json();
-  },
+  }
 
-  // Queue image generation (for multiple images)
-  queueImageGeneration: async (
-    prompt: string,
-    apiKey: string,
-    options: FalImageOptions = {}
-  ): Promise<FalQueueResponse> => {
-    const model = options.model || 'fal-ai/flux/dev';
+  // ============================================
+  // IMAGE GENERATION
+  // ============================================
 
-    const sizeMap: Record<string, { width: number; height: number }> = {
-      '16:9': { width: 1344, height: 768 },
-      '9:16': { width: 768, height: 1344 },
-      '1:1': { width: 1024, height: 1024 },
-      '4:3': { width: 1152, height: 896 },
-      '3:4': { width: 896, height: 1152 },
-    };
-
-    const size = sizeMap[options.aspectRatio || '9:16'];
-
-    const response = await fetch(`${FAL_API_URL}/${model}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Key ${apiKey}`,
-      },
-      body: JSON.stringify({
-        prompt,
-        image_size: size,
-        num_images: 1,
-        enable_safety_checker: true,
-      }),
+  async generateImage(params: ImageGenerationParams): Promise<{ images: ImageResult[] }> {
+    const model = params.model || FAL_MODELS.FLUX_DEV;
+    
+    return this.request(model, {
+      prompt: params.prompt,
+      negative_prompt: params.negative_prompt,
+      image_size: params.image_size || 'landscape_4_3',
+      num_inference_steps: params.num_inference_steps || 28,
+      guidance_scale: params.guidance_scale || 3.5,
+      num_images: params.num_images || 1,
+      seed: params.seed,
     });
+  }
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new Error(error.detail || `FAL.ai error: ${response.status}`);
-    }
+  async generateWithFluxPro(prompt: string, options?: Partial<ImageGenerationParams>): Promise<ImageResult[]> {
+    const result = await this.generateImage({
+      ...options,
+      prompt,
+      model: FAL_MODELS.FLUX_PRO,
+    });
+    return result.images;
+  }
 
-    return response.json();
-  },
+  async generateQuick(prompt: string): Promise<ImageResult[]> {
+    const result = await this.generateImage({
+      prompt,
+      model: FAL_MODELS.FLUX_SCHNELL,
+      num_inference_steps: 4,
+    });
+    return result.images;
+  }
 
-  // Generate video from image
-  generateVideo: async (
+  // ============================================
+  // IMAGE TO IMAGE
+  // ============================================
+
+  async imageToImage(
     imageUrl: string,
     prompt: string,
-    apiKey: string,
-    options: FalVideoOptions = {}
-  ): Promise<FalVideoResult> => {
-    const model = options.model || 'fal-ai/kling-video/v1.5/pro/image-to-video';
-
-    const body: Record<string, any> = {
-      prompt,
+    strength?: number
+  ): Promise<{ images: ImageResult[] }> {
+    return this.request(FAL_MODELS.IMG2IMG, {
       image_url: imageUrl,
-    };
-
-    // Model-specific parameters
-    if (model.includes('kling')) {
-      body.duration = options.duration || '5';
-      body.aspect_ratio = '9:16';
-    } else if (model.includes('minimax')) {
-      body.prompt_optimizer = true;
-    } else if (model.includes('luma')) {
-      body.aspect_ratio = '9:16';
-    }
-
-    const response = await fetch(`${FAL_API_URL}/${model}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Key ${apiKey}`,
-      },
-      body: JSON.stringify(body),
+      prompt,
+      strength: strength || 0.75,
     });
+  }
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new Error(error.detail || `FAL.ai video error: ${response.status}`);
-    }
+  // ============================================
+  // IMAGE ENHANCEMENT
+  // ============================================
 
-    return response.json();
-  },
-
-  // Check queue status
-  checkStatus: async (
-    requestId: string,
-    model: string,
-    apiKey: string
-  ): Promise<FalQueueResponse> => {
-    const response = await fetch(`${FAL_API_URL}/${model}/requests/${requestId}/status`, {
-      headers: {
-        'Authorization': `Key ${apiKey}`,
-      },
+  async upscaleImage(imageUrl: string, scale?: number): Promise<{ image: ImageResult }> {
+    return this.request(FAL_MODELS.UPSCALER, {
+      image_url: imageUrl,
+      scale: scale || 2,
     });
+  }
 
-    if (!response.ok) {
-      throw new Error(`Failed to check status: ${response.status}`);
-    }
-
-    return response.json();
-  },
-
-  // Get result from queue
-  getResult: async <T>(
-    requestId: string,
-    model: string,
-    apiKey: string
-  ): Promise<T> => {
-    const response = await fetch(`${FAL_API_URL}/${model}/requests/${requestId}`, {
-      headers: {
-        'Authorization': `Key ${apiKey}`,
-      },
+  async removeBackground(imageUrl: string): Promise<{ image: ImageResult }> {
+    return this.request(FAL_MODELS.REMOVE_BG, {
+      image_url: imageUrl,
     });
+  }
 
-    if (!response.ok) {
-      throw new Error(`Failed to get result: ${response.status}`);
-    }
+  async restoreFace(imageUrl: string): Promise<{ image: ImageResult }> {
+    return this.request(FAL_MODELS.FACE_RESTORE, {
+      image_url: imageUrl,
+    });
+  }
 
-    return response.json();
-  },
-};
+  // ============================================
+  // VIDEO GENERATION
+  // ============================================
+
+  async generateVideo(params: VideoGenerationParams): Promise<{ video: VideoResult }> {
+    return this.request(FAL_MODELS.RUNWAY_GEN3, {
+      prompt: params.prompt,
+      negative_prompt: params.negative_prompt,
+      duration: params.duration || 5,
+      aspect_ratio: params.aspect_ratio || '16:9',
+      seed: params.seed,
+    });
+  }
+
+  async imageToVideo(
+    imageUrl: string,
+    motion_bucket_id?: number
+  ): Promise<{ video: VideoResult }> {
+    return this.request(FAL_MODELS.STABLE_VIDEO, {
+      image_url: imageUrl,
+      motion_bucket_id: motion_bucket_id || 127,
+    });
+  }
+
+  // ============================================
+  // HELPERS
+  // ============================================
+
+  isConfigured(): boolean {
+    return !!this.apiKey;
+  }
+
+  getAvailableModels() {
+    return FAL_MODELS;
+  }
+}
+
+export const falAI = new FalAIService();
+export default falAI;
