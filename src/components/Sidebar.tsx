@@ -19,6 +19,7 @@ const navItems = [
   { path: '/clients', icon: Icons.Users, label: 'Clientes' },
   { path: '/agents', icon: Icons.Bot, label: 'Agentes' },
   { path: '/settings', icon: Icons.Settings, label: 'Equipe' },
+  { path: '/integrations', icon: Icons.Zap, label: 'Integrações', badge: '⚡', adminOnly: true },
   { path: '/admin', icon: Icons.Shield, label: 'Admin', adminOnly: true },
 ];
 
