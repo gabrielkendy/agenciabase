@@ -1,0 +1,387 @@
+{
+  "name": "BASE Agency - Sistema de Login/Autenticação",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "auth/login",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "id": "webhook-login",
+      "name": "Webhook Login",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "auth-login"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-email",
+              "leftValue": "={{ $json.body.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "check-password",
+              "leftValue": "={{ $json.body.password }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate-credentials",
+      "name": "Validar Credenciais",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://agenciabase.onrender.com/api/auth/verify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"email\": \"{{ $json.body.email }}\",\n  \"password\": \"{{ $json.body.password }}\"\n}",
+        "options": {}
+      },
+      "id": "verify-user",
+      "name": "Verificar Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "user-valid",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-user-valid",
+      "name": "Usuário Válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Gerar token JWT simples\nconst crypto = require('crypto');\n\nconst user = $input.item.json.user;\nconst now = Date.now();\nconst expiresIn = 7 * 24 * 60 * 60 * 1000; // 7 dias\n\n// Payload do token\nconst payload = {\n  user_id: user.id,\n  email: user.email,\n  role: user.role,\n  tenant_id: user.tenant_id,\n  iat: now,\n  exp: now + expiresIn\n};\n\n// Criar token (base64 encoded JSON)\nconst tokenData = Buffer.from(JSON.stringify(payload)).toString('base64');\nconst signature = crypto\n  .createHmac('sha256', $env.JWT_SECRET || 'base-agency-secret-key')\n  .update(tokenData)\n  .digest('hex');\n\nconst token = `${tokenData}.${signature}`;\n\nreturn {\n  json: {\n    success: true,\n    token: token,\n    user: {\n      id: user.id,\n      name: user.name,\n      email: user.email,\n      role: user.role,\n      tenant_id: user.tenant_id,\n      avatar: user.avatar\n    },\n    expiresAt: new Date(now + expiresIn).toISOString()\n  }\n};"
+      },
+      "id": "generate-token",
+      "name": "Gerar Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://agenciabase.onrender.com/api/auth/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": \"{{ $json.user.id }}\",\n  \"action\": \"login\",\n  \"ip\": \"{{ $('Webhook Login').item.json.headers['x-forwarded-for'] || 'unknown' }}\",\n  \"user_agent\": \"{{ $('Webhook Login').item.json.headers['user-agent'] || 'unknown' }}\"\n}",
+        "options": {}
+      },
+      "id": "log-login",
+      "name": "Log de Login",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "response-success",
+      "name": "Resposta Sucesso",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1450, 100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"error\": \"Email ou senha inválidos\"\n}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "response-invalid-credentials",
+      "name": "Resposta: Credenciais Inválidas",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"error\": \"Email e senha são obrigatórios\"\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "response-missing-data",
+      "name": "Resposta: Dados Faltando",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "auth/verify-token",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "id": "webhook-verify-token",
+      "name": "Webhook Verify Token",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 600],
+      "webhookId": "auth-verify-token"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const crypto = require('crypto');\n\nconst authHeader = $input.item.json.headers.authorization || '';\nconst token = authHeader.replace('Bearer ', '');\n\nif (!token) {\n  return {\n    json: {\n      valid: false,\n      error: 'Token não fornecido'\n    }\n  };\n}\n\ntry {\n  const [tokenData, signature] = token.split('.');\n  \n  // Verificar assinatura\n  const expectedSignature = crypto\n    .createHmac('sha256', $env.JWT_SECRET || 'base-agency-secret-key')\n    .update(tokenData)\n    .digest('hex');\n  \n  if (signature !== expectedSignature) {\n    return {\n      json: {\n        valid: false,\n        error: 'Token inválido'\n      }\n    };\n  }\n  \n  // Decodificar payload\n  const payload = JSON.parse(Buffer.from(tokenData, 'base64').toString());\n  \n  // Verificar expiração\n  if (payload.exp < Date.now()) {\n    return {\n      json: {\n        valid: false,\n        error: 'Token expirado'\n      }\n    };\n  }\n  \n  return {\n    json: {\n      valid: true,\n      user: {\n        id: payload.user_id,\n        email: payload.email,\n        role: payload.role,\n        tenant_id: payload.tenant_id\n      }\n    }\n  };\n} catch (e) {\n  return {\n    json: {\n      valid: false,\n      error: 'Erro ao processar token'\n    }\n  };\n}"
+      },
+      "id": "verify-token-code",
+      "name": "Verificar Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 600]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": "={{ $json.valid ? 200 : 401 }}"
+        }
+      },
+      "id": "response-verify-token",
+      "name": "Resposta Verify Token",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [650, 600]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "auth/logout",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "id": "webhook-logout",
+      "name": "Webhook Logout",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 800],
+      "webhookId": "auth-logout"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://agenciabase.onrender.com/api/auth/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": \"{{ $json.body.user_id }}\",\n  \"action\": \"logout\",\n  \"ip\": \"{{ $json.headers['x-forwarded-for'] || 'unknown' }}\"\n}",
+        "options": {}
+      },
+      "id": "log-logout",
+      "name": "Log de Logout",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 800]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"Logout realizado com sucesso\"\n}",
+        "options": {}
+      },
+      "id": "response-logout",
+      "name": "Resposta Logout",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [650, 800]
+    }
+  ],
+  "connections": {
+    "Webhook Login": {
+      "main": [
+        [
+          {
+            "node": "Validar Credenciais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Credenciais": {
+      "main": [
+        [
+          {
+            "node": "Verificar Usuário",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resposta: Dados Faltando",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Usuário": {
+      "main": [
+        [
+          {
+            "node": "Usuário Válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Usuário Válido?": {
+      "main": [
+        [
+          {
+            "node": "Gerar Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resposta: Credenciais Inválidas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar Token": {
+      "main": [
+        [
+          {
+            "node": "Log de Login",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log de Login": {
+      "main": [
+        [
+          {
+            "node": "Resposta Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Verificar Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Token": {
+      "main": [
+        [
+          {
+            "node": "Resposta Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Logout": {
+      "main": [
+        [
+          {
+            "node": "Log de Logout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log de Logout": {
+      "main": [
+        [
+          {
+            "node": "Resposta Logout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "auth"
+    },
+    {
+      "name": "security"
+    }
+  ]
+}

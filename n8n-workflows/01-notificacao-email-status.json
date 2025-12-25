@@ -1,0 +1,196 @@
+{
+  "name": "BASE Agency - Notificação Email Status",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "status-changed-email",
+        "options": {}
+      },
+      "id": "webhook-email",
+      "name": "Webhook Status Changed",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "status-changed-email"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-status",
+              "leftValue": "={{ $json.body.new_status }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate-data",
+      "name": "Validar Dados",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Mapear status para mensagem amigável\nconst statusMessages = {\n  'briefing': '📝 Briefing em elaboração',\n  'em_producao': '🎨 Em produção',\n  'revisao_interna': '🔍 Em revisão interna',\n  'ajuste_interno': '🔧 Em ajuste interno',\n  'aprovacao_cliente': '✅ Aguardando sua aprovação',\n  'ajuste_cliente': '📝 Em ajuste (cliente solicitou)',\n  'aprovado': '🎉 Aprovado pelo cliente',\n  'agendado': '📅 Agendado para publicação',\n  'publicado': '🚀 Publicado!',\n  'concluido': '✨ Concluído'\n};\n\nconst status = $input.item.json.body.new_status;\nconst statusMessage = statusMessages[status] || status;\n\nconst emailSubject = `[BASE Agency] ${$input.item.json.body.demand_title} - ${statusMessage}`;\n\nlet emailBody = `\n<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">\n  <div style=\"background: linear-gradient(135deg, #f97316, #eab308); padding: 20px; text-align: center;\">\n    <h1 style=\"color: white; margin: 0;\">BASE Agency</h1>\n  </div>\n  \n  <div style=\"padding: 30px; background: #f9fafb;\">\n    <h2 style=\"color: #1f2937;\">Atualização de Status</h2>\n    \n    <div style=\"background: white; border-radius: 8px; padding: 20px; margin: 20px 0;\">\n      <p style=\"margin: 0 0 10px;\"><strong>Demanda:</strong> ${$input.item.json.body.demand_title}</p>\n      <p style=\"margin: 0 0 10px;\"><strong>Cliente:</strong> ${$input.item.json.body.client_name}</p>\n      <p style=\"margin: 0 0 10px;\"><strong>Novo Status:</strong> <span style=\"color: #f97316; font-weight: bold;\">${statusMessage}</span></p>\n      <p style=\"margin: 0;\"><strong>Atualizado por:</strong> ${$input.item.json.body.updated_by || 'Sistema'}</p>\n    </div>\n`;\n\n// Se for aprovação do cliente, adicionar botões\nif (status === 'aprovacao_cliente' && $input.item.json.body.approval_link) {\n  emailBody += `\n    <div style=\"text-align: center; margin: 30px 0;\">\n      <p style=\"color: #6b7280;\">Clique abaixo para revisar e aprovar o conteúdo:</p>\n      <a href=\"${$input.item.json.body.approval_link}\" style=\"display: inline-block; background: #22c55e; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 10px 5px;\">✅ Revisar e Aprovar</a>\n    </div>\n  `;\n}\n\n// Se for publicado, mostrar link\nif (status === 'publicado' && $input.item.json.body.post_url) {\n  emailBody += `\n    <div style=\"text-align: center; margin: 30px 0;\">\n      <a href=\"${$input.item.json.body.post_url}\" style=\"display: inline-block; background: #3b82f6; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;\">🔗 Ver Publicação</a>\n    </div>\n  `;\n}\n\nemailBody += `\n    <p style=\"color: #6b7280; font-size: 14px; margin-top: 30px;\">\n      Acesse o painel para mais detalhes: \n      <a href=\"https://agenciabase.onrender.com\" style=\"color: #f97316;\">agenciabase.onrender.com</a>\n    </p>\n  </div>\n  \n  <div style=\"background: #1f2937; padding: 20px; text-align: center;\">\n    <p style=\"color: #9ca3af; margin: 0; font-size: 12px;\">BASE Agency - Gestão de Marketing Digital</p>\n  </div>\n</div>\n`;\n\nreturn {\n  json: {\n    to_email: $input.item.json.body.client_email,\n    cc_email: $input.item.json.body.team_email,\n    subject: emailSubject,\n    html: emailBody,\n    demand_id: $input.item.json.body.demand_id,\n    status: status\n  }\n};"
+      },
+      "id": "build-email",
+      "name": "Construir Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@agenciabase.tech",
+        "toEmail": "={{ $json.to_email }}",
+        "ccEmail": "={{ $json.cc_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Enviar Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [850, 200],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credential",
+          "name": "SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://agenciabase.onrender.com/api/notifications/log",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "email"
+            },
+            {
+              "name": "demand_id",
+              "value": "={{ $json.demand_id }}"
+            },
+            {
+              "name": "status",
+              "value": "sent"
+            },
+            {
+              "name": "recipient",
+              "value": "={{ $json.to_email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-notification",
+      "name": "Registrar Envio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "error",
+              "value": "Dados inválidos recebidos"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "error-response",
+      "name": "Erro: Dados Inválidos",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [650, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Status Changed": {
+      "main": [
+        [
+          {
+            "node": "Validar Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Dados": {
+      "main": [
+        [
+          {
+            "node": "Construir Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Erro: Dados Inválidos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Email": {
+      "main": [
+        [
+          {
+            "node": "Enviar Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Email": {
+      "main": [
+        [
+          {
+            "node": "Registrar Envio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "notifications"
+    },
+    {
+      "name": "email"
+    }
+  ]
+}

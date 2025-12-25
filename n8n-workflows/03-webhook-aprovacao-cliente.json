@@ -1,0 +1,379 @@
+{
+  "name": "BASE Agency - Webhook Aprovação Cliente",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "client-approval",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "id": "webhook-approval",
+      "name": "Webhook Aprovação",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "client-approval"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-token",
+              "leftValue": "={{ $json.body.token }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "check-demand",
+              "leftValue": "={{ $json.body.demand_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate-request",
+      "name": "Validar Request",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://agenciabase.onrender.com/api/demands/{{ $json.body.demand_id }}/verify-token/{{ $json.body.token }}",
+        "options": {}
+      },
+      "id": "verify-token",
+      "name": "Verificar Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "token-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-token-valid",
+      "name": "Token Válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-approved",
+              "leftValue": "={{ $('Webhook Aprovação').item.json.body.action }}",
+              "rightValue": "approve",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-action",
+      "name": "Aprovado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://agenciabase.onrender.com/api/demands/{{ $('Webhook Aprovação').item.json.body.demand_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"aprovado\",\n  \"approved_by\": \"{{ $('Webhook Aprovação').item.json.body.approved_by || 'Cliente' }}\",\n  \"approved_at\": \"{{ new Date().toISOString() }}\",\n  \"client_feedback\": \"{{ $('Webhook Aprovação').item.json.body.feedback || '' }}\"\n}",
+        "options": {}
+      },
+      "id": "update-approved",
+      "name": "Atualizar: Aprovado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 100]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://agenciabase.onrender.com/api/demands/{{ $('Webhook Aprovação').item.json.body.demand_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"ajuste_cliente\",\n  \"client_feedback\": \"{{ $('Webhook Aprovação').item.json.body.feedback || 'Ajustes solicitados' }}\",\n  \"feedback_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "id": "update-adjustment",
+      "name": "Atualizar: Ajuste",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $env.TEAM_WHATSAPP }}\",\n  \"text\": \"🎉 *Demanda Aprovada!*\\n\\nCliente: {{ $('Webhook Aprovação').item.json.body.client_name || 'Cliente' }}\\nDemanda: {{ $json.title || $('Webhook Aprovação').item.json.body.demand_id }}\\n\\n_A demanda pode ser agendada para publicação._\"\n}",
+        "options": {}
+      },
+      "id": "notify-team-approved",
+      "name": "Notificar Equipe (Aprovado)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1450, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $env.TEAM_WHATSAPP }}\",\n  \"text\": \"📝 *Ajustes Solicitados*\\n\\nCliente: {{ $('Webhook Aprovação').item.json.body.client_name || 'Cliente' }}\\nDemanda: {{ $json.title || $('Webhook Aprovação').item.json.body.demand_id }}\\n\\n*Feedback:*\\n{{ $('Webhook Aprovação').item.json.body.feedback || 'Sem detalhes' }}\\n\\n_Por favor, realizar os ajustes solicitados._\"\n}",
+        "options": {}
+      },
+      "id": "notify-team-adjustment",
+      "name": "Notificar Equipe (Ajuste)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"Ação processada com sucesso\",\n  \"action\": \"{{ $('Webhook Aprovação').item.json.body.action }}\"\n}",
+        "options": {}
+      },
+      "id": "response-success",
+      "name": "Resposta Sucesso",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1650, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"error\": \"Token inválido ou expirado\"\n}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "response-invalid-token",
+      "name": "Resposta: Token Inválido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"error\": \"Dados inválidos\"\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "response-invalid-data",
+      "name": "Resposta: Dados Inválidos",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [650, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Aprovação": {
+      "main": [
+        [
+          {
+            "node": "Validar Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Request": {
+      "main": [
+        [
+          {
+            "node": "Verificar Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resposta: Dados Inválidos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Token": {
+      "main": [
+        [
+          {
+            "node": "Token Válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token Válido?": {
+      "main": [
+        [
+          {
+            "node": "Aprovado?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resposta: Token Inválido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aprovado?": {
+      "main": [
+        [
+          {
+            "node": "Atualizar: Aprovado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Atualizar: Ajuste",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar: Aprovado": {
+      "main": [
+        [
+          {
+            "node": "Notificar Equipe (Aprovado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar: Ajuste": {
+      "main": [
+        [
+          {
+            "node": "Notificar Equipe (Ajuste)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar Equipe (Aprovado)": {
+      "main": [
+        [
+          {
+            "node": "Resposta Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar Equipe (Ajuste)": {
+      "main": [
+        [
+          {
+            "node": "Resposta Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "approval"
+    },
+    {
+      "name": "client"
+    }
+  ]
+}

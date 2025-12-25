@@ -1,0 +1,401 @@
+{
+  "name": "BASE Agency - Agendamento e Publicação",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "cron-scheduler",
+      "name": "Verificar Agendamentos (5 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://agenciabase.onrender.com/api/demands/scheduled?status=agendado",
+        "options": {}
+      },
+      "id": "get-scheduled",
+      "name": "Buscar Agendadas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Filtrar demandas que devem ser publicadas agora\nconst demands = $input.item.json.demands || [];\nconst now = new Date();\nconst tolerance = 5 * 60 * 1000; // 5 minutos de tolerância\n\nconst toPublish = demands.filter(demand => {\n  if (!demand.scheduled_date) return false;\n  \n  const scheduledDate = new Date(demand.scheduled_date);\n  const diff = Math.abs(scheduledDate.getTime() - now.getTime());\n  \n  // Se está dentro da tolerância e ainda não foi publicado\n  return diff <= tolerance && demand.status === 'agendado';\n});\n\nreturn toPublish.map(demand => ({ json: demand }));"
+      },
+      "id": "filter-ready",
+      "name": "Filtrar Prontas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-demands",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-has-demands",
+      "name": "Tem Demandas?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Preparar dados para publicação no Late API\nconst demand = $input.item.json;\n\n// Mapear canais para Late API\nconst channelMapping = {\n  'instagram': 'instagram',\n  'facebook': 'facebook',\n  'linkedin': 'linkedin',\n  'tiktok': 'tiktok',\n  'twitter': 'twitter',\n  'youtube': 'youtube',\n  'pinterest': 'pinterest'\n};\n\n// Construir conteúdo\nlet content = {\n  text: demand.ai_caption || demand.caption || demand.briefing || '',\n  mediaUrls: demand.media?.map(m => m.url) || [],\n  mediaType: demand.content_type === 'carrossel' ? 'carousel' : \n             demand.content_type === 'video' || demand.content_type === 'reels' ? 'video' : 'image'\n};\n\n// Adicionar hashtags se existir\nif (demand.ai_hashtags || demand.hashtags) {\n  content.text += '\\n\\n' + (demand.ai_hashtags || demand.hashtags);\n}\n\nreturn {\n  json: {\n    demand_id: demand.id,\n    demand_title: demand.title,\n    client_id: demand.client_id,\n    client_name: demand.client?.name || 'Cliente',\n    client_phone: demand.client?.phone,\n    channels: demand.channels || ['instagram'],\n    content: content,\n    scheduled_date: demand.scheduled_date\n  }\n};"
+      },
+      "id": "prepare-publish",
+      "name": "Preparar Publicação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.late.so/v1/posts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LATE_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": {{ JSON.stringify($json.content) }},\n  \"publish_now\": true\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "publish-late",
+      "name": "Publicar via Late API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "publish-success",
+              "leftValue": "={{ $json.id || $json.status === 'published' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-publish-success",
+      "name": "Publicou?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://agenciabase.onrender.com/api/demands/{{ $('Preparar Publicação').item.json.demand_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"publicado\",\n  \"published_at\": \"{{ new Date().toISOString() }}\",\n  \"post_url\": \"{{ $json.postUrl || $json.url || '' }}\",\n  \"post_id\": \"{{ $json.id || '' }}\"\n}",
+        "options": {}
+      },
+      "id": "update-status-published",
+      "name": "Atualizar: Publicado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1650, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $('Preparar Publicação').item.json.client_phone }}\",\n  \"text\": \"🚀 *Seu conteúdo foi publicado!*\\n\\n*{{ $('Preparar Publicação').item.json.demand_title }}*\\n\\nAcompanhe os resultados!\\n\\n_BASE Agency_\"\n}",
+        "options": {}
+      },
+      "id": "notify-client-published",
+      "name": "Notificar Cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1850, 100]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://agenciabase.onrender.com/api/demands/{{ $('Preparar Publicação').item.json.demand_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"erro_publicacao\",\n  \"publish_error\": {{ JSON.stringify($json) }}\n}",
+        "options": {}
+      },
+      "id": "update-status-error",
+      "name": "Atualizar: Erro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $env.TEAM_WHATSAPP }}\",\n  \"text\": \"⚠️ *Erro na Publicação*\\n\\nDemanda: {{ $('Preparar Publicação').item.json.demand_title }}\\nCliente: {{ $('Preparar Publicação').item.json.client_name }}\\n\\nVerifique o painel para mais detalhes.\\n\\n_BASE Agency_\"\n}",
+        "options": {}
+      },
+      "id": "notify-team-error",
+      "name": "Notificar Equipe (Erro)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "schedule-publish",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "id": "webhook-schedule",
+      "name": "Webhook Agendar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 600],
+      "webhookId": "schedule-publish"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://agenciabase.onrender.com/api/demands/{{ $json.body.demand_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"agendado\",\n  \"scheduled_date\": \"{{ $json.body.scheduled_date }}\",\n  \"scheduled_by\": \"{{ $json.body.scheduled_by || 'Sistema' }}\"\n}",
+        "options": {}
+      },
+      "id": "update-scheduled",
+      "name": "Atualizar Agendamento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 600]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"Publicação agendada com sucesso\",\n  \"scheduled_date\": \"{{ $('Webhook Agendar').item.json.body.scheduled_date }}\"\n}",
+        "options": {}
+      },
+      "id": "response-scheduled",
+      "name": "Resposta Agendado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [650, 600]
+    }
+  ],
+  "connections": {
+    "Verificar Agendamentos (5 min)": {
+      "main": [
+        [
+          {
+            "node": "Buscar Agendadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Agendadas": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Prontas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Prontas": {
+      "main": [
+        [
+          {
+            "node": "Tem Demandas?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Demandas?": {
+      "main": [
+        [
+          {
+            "node": "Preparar Publicação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Publicação": {
+      "main": [
+        [
+          {
+            "node": "Publicar via Late API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publicar via Late API": {
+      "main": [
+        [
+          {
+            "node": "Publicou?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publicou?": {
+      "main": [
+        [
+          {
+            "node": "Atualizar: Publicado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Atualizar: Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar: Publicado": {
+      "main": [
+        [
+          {
+            "node": "Notificar Cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar: Erro": {
+      "main": [
+        [
+          {
+            "node": "Notificar Equipe (Erro)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Agendar": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar Agendamento": {
+      "main": [
+        [
+          {
+            "node": "Resposta Agendado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "scheduling"
+    },
+    {
+      "name": "publishing"
+    }
+  ]
+}

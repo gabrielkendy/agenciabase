@@ -1,0 +1,176 @@
+{
+  "name": "BASE Agency - Notificação WhatsApp Evolution API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-notify",
+        "options": {}
+      },
+      "id": "webhook-whatsapp",
+      "name": "Webhook WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "whatsapp-notify"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Formatar número de telefone para Brasil\nlet phone = $input.item.json.body.phone || '';\n\n// Remover tudo que não é número\nphone = phone.replace(/\\D/g, '');\n\n// Se começa com 0, remove\nif (phone.startsWith('0')) {\n  phone = phone.substring(1);\n}\n\n// Se não tem código do país, adiciona 55 (Brasil)\nif (phone.length === 11 || phone.length === 10) {\n  phone = '55' + phone;\n}\n\n// Mapear tipo de notificação para template\nconst templates = {\n  'status_update': {\n    emoji: '📢',\n    title: 'Atualização de Status'\n  },\n  'approval_request': {\n    emoji: '✅',\n    title: 'Solicitação de Aprovação'\n  },\n  'deadline_reminder': {\n    emoji: '⏰',\n    title: 'Lembrete de Prazo'\n  },\n  'published': {\n    emoji: '🚀',\n    title: 'Conteúdo Publicado'\n  },\n  'feedback': {\n    emoji: '💬',\n    title: 'Novo Feedback'\n  }\n};\n\nconst notifType = $input.item.json.body.type || 'status_update';\nconst template = templates[notifType] || templates.status_update;\n\nlet message = `${template.emoji} *${template.title}*\\n\\n`;\nmessage += $input.item.json.body.message || '';\n\n// Adicionar link se existir\nif ($input.item.json.body.link) {\n  message += `\\n\\n🔗 ${$input.item.json.body.link}`;\n}\n\n// Adicionar assinatura\nmessage += `\\n\\n_BASE Agency_`;\n\nreturn {\n  json: {\n    phone: phone,\n    message: message,\n    type: notifType,\n    demand_id: $input.item.json.body.demand_id\n  }\n};"
+      },
+      "id": "format-message",
+      "name": "Formatar Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.phone }}\",\n  \"text\": {{ JSON.stringify($json.message) }},\n  \"delay\": 1200\n}",
+        "options": {}
+      },
+      "id": "send-whatsapp",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-success",
+              "leftValue": "={{ $json.key?.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-response",
+      "name": "Enviou?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://agenciabase.onrender.com/api/notifications/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"whatsapp\",\n  \"demand_id\": \"{{ $('Formatar Mensagem').item.json.demand_id }}\",\n  \"status\": \"sent\",\n  \"recipient\": \"{{ $('Formatar Mensagem').item.json.phone }}\",\n  \"message_id\": \"{{ $json.key?.id }}\"\n}",
+        "options": {}
+      },
+      "id": "log-success",
+      "name": "Log Sucesso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://agenciabase.onrender.com/api/notifications/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"whatsapp\",\n  \"demand_id\": \"{{ $('Formatar Mensagem').item.json.demand_id }}\",\n  \"status\": \"failed\",\n  \"recipient\": \"{{ $('Formatar Mensagem').item.json.phone }}\",\n  \"error\": {{ JSON.stringify($json) }}\n}",
+        "options": {}
+      },
+      "id": "log-error",
+      "name": "Log Erro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 400]
+    }
+  ],
+  "connections": {
+    "Webhook WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Formatar Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Enviou?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviou?": {
+      "main": [
+        [
+          {
+            "node": "Log Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "notifications"
+    },
+    {
+      "name": "whatsapp"
+    }
+  ]
+}
